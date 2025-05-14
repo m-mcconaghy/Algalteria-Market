@@ -137,23 +137,25 @@ selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 if selected_ticker:
     import altair as alt
 
-history = st.session_state.price_history[
-    st.session_state.price_history["Ticker"] == selected_ticker
-].copy()
+    history = st.session_state.price_history[
+        st.session_state.price_history["Ticker"] == selected_ticker
+    ].copy()
 
-if not history.empty:
-    # Convert Timestamp to full datetime object
-    today = datetime.today().date()
-    history["Datetime"] = pd.to_datetime(today.strftime("%Y-%m-%d") + " " + history["Timestamp"])
+    if not history.empty:
+        # Convert Timestamp to full datetime object
+        today = datetime.today().date()
+        history["Datetime"] = pd.to_datetime(today.strftime("%Y-%m-%d") + " " + history["Timestamp"])
 
-    chart = alt.Chart(history).mark_line(point=False).encode(
-        x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
-        y=alt.Y("Price:Q", axis=alt.Axis(title="Price (cr)")),
-        tooltip=["Datetime:T", "Price:Q"]
-    ).properties(
-        title=f"{selected_ticker} Price History",
-        width="container",
-        height=300
-    ).interactive()
+        chart = alt.Chart(history).mark_line(point=False).encode(
+            x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
+            y=alt.Y("Price:Q", axis=alt.Axis(title="Price (cr)")),
+            tooltip=["Datetime:T", "Price:Q"]
+        ).properties(
+            title=f"{selected_ticker} Price History",
+            width="container",
+            height=300
+        ).interactive()
 
-    st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("No price history available yet.")
