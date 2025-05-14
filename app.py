@@ -22,23 +22,32 @@ except Exception:
 if "running" not in st.session_state:
     st.session_state.running = loaded_running_state
 
-# Initialize stocks
+# Initial stock setup
+tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
+names = [
+    "Directorate Tech Fund", 
+    "Galactic Mining Guild", 
+    "Universal Services Fund", 
+    "The Textile Team", 
+    "Galactic Farmers Union", 
+    "Imperial Weapons Industry", 
+    "Epsilon Exchange"
+]
+initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
+volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
+
+# Initialize state
 if "stocks" not in st.session_state:
-    st.session_state.stocks = pd.DataFrame({
-        "Ticker": ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "TMF"],
-        "Name": [
-            "Directorate Tech Fund", 
-            "Galactic Mining Guild", 
-            "Universal Services Fund", 
-            "The Textile Team", 
-            "Galactic Farmers Union", 
-            "Imperial Weapons Industry", 
-            "Epsilon Exchange", 
-            "Total Market Fund"
-        ],
-        "Price": [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0, 100.0],
-        "Volatility": [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018]
+    df = pd.DataFrame({
+        "Ticker": tickers,
+        "Name": names,
+        "Price": initial_prices,
+        "Volatility": volatility
     })
+    st.session_state.stocks = df
+
+if "initial_prices" not in st.session_state:
+    st.session_state.initial_prices = dict(zip(tickers, initial_prices))
 
 if "price_history" not in st.session_state:
     st.session_state.price_history = pd.DataFrame(columns=["Timestamp", "Ticker", "Price"])
@@ -55,24 +64,40 @@ if st.button("⏯ Pause / Resume Market"):
 # Price updater
 def update_prices():
     df = st.session_state.stocks.copy()
-    prev_prices = df["Price"].copy()
-    df["Price"] = df["Price"] * (1 + np.random.uniform(-df["Volatility"], df["Volatility"]))
-    df["$ Change"] = df["Price"] - prev_prices
-    df["% Change"] = ((df["$ Change"] / prev_prices) * 100).round(2)
-    st.session_state.stocks = df
 
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    for _, row in df.iterrows():
+    # Update each asset except TMF
+    for idx, row in df.iterrows():
+        if row["Ticker"] == "TMF":
+            continue
+        change = np.random.uniform(-row["Volatility"], row["Volatility"])
+        df.at[idx, "Price"] *= (1 + change)
+
+        # Log to history
+        timestamp = datetime.now().strftime("%H:%M:%S")
         st.session_state.price_history.loc[len(st.session_state.price_history)] = {
             "Timestamp": timestamp,
             "Ticker": row["Ticker"],
-            "Price": row["Price"]
+            "Price": df.at[idx, "Price"]
         }
+
+    # Recalculate TMF
+    non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
+    tmf_price = non_tmf_prices.mean()
+    if "TMF" in df["Ticker"].values:
+        df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
+    else:
+        df.loc[len(df)] = {
+            "Ticker": "TMF",
+            "Name": "Total Market Fund",
+            "Price": tmf_price,
+            "Volatility": 0.0
+        }
+        st.session_state.initial_prices["TMF"] = tmf_price
+
+    st.session_state.stocks = df
 
 # Autorefresh every 10s
 count = st_autorefresh(interval=10 * 1000, key="market_heartbeat")
-
-# Only update prices once per refresh tick
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 
@@ -81,7 +106,7 @@ if st.session_state.running and count != st.session_state.last_refresh_count:
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
 
-# Show update timing
+# Time display
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
     next_tick = max(0, 10 - time_since)
@@ -89,20 +114,46 @@ if "last_update_time" in st.session_state:
 else:
     st.caption("⏱ Market has not updated yet.")
 
-# Show stock table with % and $ change
-styled_df = st.session_state.stocks[["Ticker", "Name", "Price", "$ Change", "% Change"]].copy()
+# Compute all-time $ and % change
+df = st.session_state.stocks.copy()
+df["$ Change"] = df["Price"] - df["Ticker"].map(st.session_state.initial_prices)
+df["% Change"] = (df["$ Change"] / df["Ticker"].map(st.session_state.initial_prices)) * 100
+styled_df = df[["Ticker", "Name", "Price", "$ Change", "% Change"]]
+
+# Show table
 st.dataframe(
-    styled_df.style.format({"Price": "{:.2f}", "$ Change": "{:+.2f}", "% Change": "{:+.2f}%"}),
+    styled_df.style.format({
+        "Price": "{:.2f}", 
+        "$ Change": "{:+.2f}", 
+        "% Change": "{:+.2f}%"
+    }),
     use_container_width=True
 )
 
-# Select a stock to show its chart
+# Select a stock to view its price chart
 st.markdown("### 📊 Select a stock to view price history")
-selected_ticker = st.selectbox("Choose a stock", st.session_state.stocks["Ticker"])
+selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
 if selected_ticker:
-    history = st.session_state.price_history[
-        st.session_state.price_history["Ticker"] == selected_ticker
-    ]
-    if not history.empty:
-        st.line_chart(history.set_index("Timestamp")[["Price"]], height=250, use_container_width=True)
+    import altair as alt
+
+history = st.session_state.price_history[
+    st.session_state.price_history["Ticker"] == selected_ticker
+].copy()
+
+if not history.empty:
+    # Convert Timestamp to full datetime object
+    today = datetime.today().date()
+    history["Datetime"] = pd.to_datetime(today.strftime("%Y-%m-%d") + " " + history["Timestamp"])
+
+    chart = alt.Chart(history).mark_line(point=False).encode(
+        x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
+        y=alt.Y("Price:Q", axis=alt.Axis(title="Price (cr)")),
+        tooltip=["Datetime:T", "Price:Q"]
+    ).properties(
+        title=f"{selected_ticker} Price History",
+        width="container",
+        height=300
+    ).interactive()
+
+    st.altair_chart(chart, use_container_width=True)
