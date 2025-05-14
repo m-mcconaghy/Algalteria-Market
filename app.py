@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,7 +9,7 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-# Load persisted state from file
+# Load persisted state from file (pause/resume status)
 if os.path.exists("market_state.json"):
     with open("market_state.json", "r") as f:
         loaded_state = json.load(f)
@@ -22,6 +21,7 @@ else:
 if "running" not in st.session_state:
     st.session_state.running = loaded_running_state
 
+# Initialize stocks
 if "stocks" not in st.session_state:
     st.session_state.stocks = pd.DataFrame({
         "Ticker": ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "TMF"],
@@ -39,19 +39,21 @@ if "stocks" not in st.session_state:
         "Volatility": [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018]
     })
 
+# Initialize price history
 if "price_history" not in st.session_state:
     st.session_state.price_history = pd.DataFrame(columns=["Timestamp", "Ticker", "Price"])
 
-# Title and status
+# Title and market status
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
+# Pause/Resume toggle
 if st.button("⏯ Pause / Resume Market"):
     st.session_state.running = not st.session_state.running
     with open("market_state.json", "w") as f:
         json.dump({"running": st.session_state.running}, f)
 
-# Update logic
+# Update prices function
 def update_prices():
     df = st.session_state.stocks.copy()
     df["Price"] = df["Price"] * (1 + np.random.uniform(-df["Volatility"], df["Volatility"]))
@@ -65,36 +67,31 @@ def update_prices():
             "Price": row["Price"]
         }
 
-# Display market data
+# Auto-refresh every 10 seconds (drives the update loop)
+count = st_autorefresh(interval=10 * 1000, limit=None, key="market_refresh")
+
+# Run update only if running
+if st.session_state.running:
+    update_prices()
+    st.session_state.last_update_time = time.time()
+
+# Show time since last update
+if "last_update_time" in st.session_state:
+    time_since = int(time.time() - st.session_state.last_update_time)
+    next_tick = max(0, 10 - time_since)
+    st.caption(f"⏱ Last update: {time_since}s ago — Next in: {next_tick}s")
+else:
+    st.caption("⏱ Market has not updated yet.")
+
+# Show market data
 st.dataframe(
     st.session_state.stocks.style.format({"Price": "{:.2f}"}),
     use_container_width=True
 )
 
-# Chart of historical prices
+# Chart historical prices
 st.markdown("### 📊 Price History")
 for ticker in st.session_state.stocks["Ticker"]:
     history = st.session_state.price_history[st.session_state.price_history["Ticker"] == ticker]
     if not history.empty:
         st.line_chart(data=history.set_index("Timestamp")[["Price"]], height=200, use_container_width=True)
-
-# Auto-refresh every 10 seconds unconditionally
-st_autorefresh(interval=10 * 1000, key="market_refresh")
-
-# Track last update time
-if "last_update_time" not in st.session_state:
-    st.session_state.last_update_time = time.time()
-
-# Gate price updates by time and pause state
-current_time = time.time()
-if st.session_state.running and current_time - st.session_state.last_update_time >= 10:
-    update_prices()
-    st.session_state.last_update_time = current_time
-
-# Status display
-time_since = int(current_time - st.session_state.last_update_time)
-next_tick = max(0, 10 - time_since)
-if st.session_state.running:
-    st.caption(f"⏱ Last update: {time_since}s ago — Next update in: {next_tick}s")
-else:
-    st.caption(f"⏱ Market paused — Last update was {time_since}s ago")
