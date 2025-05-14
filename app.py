@@ -86,5 +86,10 @@ if st.session_state.running and current_time - st.session_state.last_update_time
     update_prices()
     st.session_state.last_update_time = current_time
 
-time_since = current_time - st.session_state.last_update_time
-st.caption(f"⏱ Last market update: {int(time_since)}s ago")
+time_since = int(current_time - st.session_state.last_update_time)
+next_tick = max(0, 10 - time_since)
+
+if st.session_state.running:
+    st.caption(f"⏱ Last market update: {time_since}s ago — Next update in: {next_tick}s")
+else:
+    st.caption(f"⏱ Market paused — Last update was {time_since}s ago")
