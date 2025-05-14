@@ -3,12 +3,18 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import time
+import os
+import json
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-# Initialize session state
 if "running" not in st.session_state:
-    st.session_state.running = True
+    if os.path.exists("market_state.json"):
+        with open("market_state.json", "r") as f:
+            saved_state = json.load(f)
+            st.session_state.running = saved_state.get("running", True)
+    else:
+        st.session_state.running = True
 if "stocks" not in st.session_state:
     st.session_state.stocks = pd.DataFrame({
 "Ticker": ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "TMF"],
@@ -80,3 +86,7 @@ from streamlit_autorefresh import st_autorefresh
 # Auto-refresh every 10 seconds if running
 if st.session_state.running:
     st_autorefresh(interval=10 * 1000, key="market_refresh")
+    
+# Save running state
+with open("market_state.json", "w") as f:
+    json.dump({"running": st.session_state.running}, f)
