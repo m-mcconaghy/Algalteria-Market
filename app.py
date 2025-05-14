@@ -58,5 +58,9 @@ for ticker in st.session_state.stocks["Ticker"]:
     if not history.empty:
         st.line_chart(data=history.set_index("Timestamp")[["Price"]], height=200, use_container_width=True)
 
-# Auto-refresh every 10 seconds
-st.experimental_rerun() if st.session_state.running else time.sleep(10)
+from streamlit_autorefresh import st_autorefresh
+
+# Auto-refresh every 10 seconds if running
+if st.session_state.running:
+    st_autorefresh(interval=10 * 1000, key="datarefresh")
+
