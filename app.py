@@ -10,12 +10,14 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
 # Load persisted state from file (pause/resume status)
-if os.path.exists("market_state.json"):
-    with open("market_state.json", "r") as f:
-        loaded_state = json.load(f)
-        loaded_running_state = loaded_state.get("running", True)
-else:
-    loaded_running_state = True  # fallback default
+loaded_running_state = True  # fallback default
+try:
+    if os.path.exists("market_state.json"):
+        with open("market_state.json", "r") as f:
+            loaded_state = json.load(f)
+            loaded_running_state = loaded_state.get("running", True)
+except Exception as e:
+    st.warning("⚠️ Corrupted market_state.json file. Using default (RUNNING).")
 
 # Only initialize once
 if "running" not in st.session_state:
@@ -67,8 +69,18 @@ def update_prices():
             "Price": row["Price"]
         }
 
-# Auto-refresh every 10 seconds (drives the update loop)
-count = st_autorefresh(interval=10 * 1000, limit=None, key="market_refresh")
+# Autorefresh every 10 seconds
+count = st_autorefresh(interval=10 * 1000, key="market_heartbeat")
+
+# Track last update tick
+if "last_refresh_count" not in st.session_state:
+    st.session_state.last_refresh_count = -1
+
+# Only update once per refresh tick
+if st.session_state.running and count != st.session_state.last_refresh_count:
+    update_prices()
+    st.session_state.last_update_time = time.time()
+    st.session_state.last_refresh_count = count
 
 # Run update only if running
 if st.session_state.running:
