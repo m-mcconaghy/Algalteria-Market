@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,33 +6,39 @@ from datetime import datetime
 import time
 import os
 import json
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
+# Load persisted state from file
+if os.path.exists("market_state.json"):
+    with open("market_state.json", "r") as f:
+        loaded_state = json.load(f)
+        loaded_running_state = loaded_state.get("running", True)
+else:
+    loaded_running_state = True  # fallback default
+
+# Only initialize once
 if "running" not in st.session_state:
-    if os.path.exists("market_state.json"):
-        with open("market_state.json", "r") as f:
-            saved_state = json.load(f)
-            st.session_state.running = saved_state.get("running", True)
-    else:
-        st.session_state.running = True
+    st.session_state.running = loaded_running_state
+
 if "stocks" not in st.session_state:
     st.session_state.stocks = pd.DataFrame({
-"Ticker": ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "TMF"],
-"Name": [
-    "Directorate Tech Fund", 
-    "Galactic Mining Guild", 
-    "Universal Services Fund", 
-    "The Textile Team", 
-    "Galactic Farmers Union", 
-    "Imperial Weapons Industry", 
-    "Epsilon Exchange", 
-    "Total Market Fund"
-],
-"Price": [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0, 100.0],
-"Volatility": [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018]
+        "Ticker": ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "TMF"],
+        "Name": [
+            "Directorate Tech Fund", 
+            "Galactic Mining Guild", 
+            "Universal Services Fund", 
+            "The Textile Team", 
+            "Galactic Farmers Union", 
+            "Imperial Weapons Industry", 
+            "Epsilon Exchange", 
+            "Total Market Fund"
+        ],
+        "Price": [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0, 100.0],
+        "Volatility": [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018]
     })
-    
+
 if "price_history" not in st.session_state:
     st.session_state.price_history = pd.DataFrame(columns=["Timestamp", "Ticker", "Price"])
 
@@ -51,7 +58,7 @@ def update_prices():
     st.session_state.stocks = df
 
     timestamp = datetime.now().strftime("%H:%M:%S")
-    for i, row in df.iterrows():
+    for _, row in df.iterrows():
         st.session_state.price_history.loc[len(st.session_state.price_history)] = {
             "Timestamp": timestamp,
             "Ticker": row["Ticker"],
@@ -71,9 +78,7 @@ for ticker in st.session_state.stocks["Ticker"]:
     if not history.empty:
         st.line_chart(data=history.set_index("Timestamp")[["Price"]], height=200, use_container_width=True)
 
-from streamlit_autorefresh import st_autorefresh
-
-# Refresh the app every 10 seconds unconditionally
+# Auto-refresh every 10 seconds unconditionally
 st_autorefresh(interval=10 * 1000, key="market_refresh")
 
 # Track last update time
@@ -86,10 +91,10 @@ if st.session_state.running and current_time - st.session_state.last_update_time
     update_prices()
     st.session_state.last_update_time = current_time
 
+# Status display
 time_since = int(current_time - st.session_state.last_update_time)
 next_tick = max(0, 10 - time_since)
-
 if st.session_state.running:
-    st.caption(f"⏱ Last market update: {time_since}s ago — Next update in: {next_tick}s")
+    st.caption(f"⏱ Last update: {time_since}s ago — Next update in: {next_tick}s")
 else:
     st.caption(f"⏱ Market paused — Last update was {time_since}s ago")
