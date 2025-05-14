@@ -52,8 +52,15 @@ def update_prices():
         }
 
 # Update if running
-if st.session_state.running:
+if "last_update_time" not in st.session_state:
+    st.session_state.last_update_time = time.time()
+
+# Update prices only if market is running and at least 10s passed
+current_time = time.time()
+if st.session_state.running and current_time - st.session_state.last_update_time >= 10:
     update_prices()
+    st.session_state.last_update_time = current_time
+
 
 # Display market data
 st.dataframe(
@@ -72,5 +79,4 @@ from streamlit_autorefresh import st_autorefresh
 
 # Auto-refresh every 10 seconds if running
 if st.session_state.running:
-    st_autorefresh(interval=10 * 1000, key="datarefresh")
-
+    st_autorefresh(interval=10 * 1000, key="market_refresh")
