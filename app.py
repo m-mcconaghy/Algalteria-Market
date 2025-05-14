@@ -39,9 +39,10 @@ if "price_history" not in st.session_state:
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
-# Pause/Resume toggle
 if st.button("⏯ Pause / Resume Market"):
     st.session_state.running = not st.session_state.running
+    with open("market_state.json", "w") as f:
+        json.dump({"running": st.session_state.running}, f)
 
 # Update logic
 def update_prices():
@@ -56,17 +57,6 @@ def update_prices():
             "Ticker": row["Ticker"],
             "Price": row["Price"]
         }
-
-# Update if running
-if "last_update_time" not in st.session_state:
-    st.session_state.last_update_time = time.time()
-
-# Update prices only if market is running and at least 10s passed
-current_time = time.time()
-if st.session_state.running and current_time - st.session_state.last_update_time >= 10:
-    update_prices()
-    st.session_state.last_update_time = current_time
-
 
 # Display market data
 st.dataframe(
