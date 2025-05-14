@@ -83,10 +83,18 @@ for ticker in st.session_state.stocks["Ticker"]:
 
 from streamlit_autorefresh import st_autorefresh
 
-# Auto-refresh every 10 seconds if running
-if st.session_state.running:
-    st_autorefresh(interval=10 * 1000, key="market_refresh")
-    
-# Save running state
-with open("market_state.json", "w") as f:
-    json.dump({"running": st.session_state.running}, f)
+# Refresh the app every 10 seconds unconditionally
+st_autorefresh(interval=10 * 1000, key="market_refresh")
+
+# Track last update time
+if "last_update_time" not in st.session_state:
+    st.session_state.last_update_time = time.time()
+
+# Gate price updates by time and pause state
+current_time = time.time()
+if st.session_state.running and current_time - st.session_state.last_update_time >= 10:
+    update_prices()
+    st.session_state.last_update_time = current_time
+
+time_since = current_time - st.session_state.last_update_time
+st.caption(f"⏱ Last market update: {int(time_since)}s ago")
