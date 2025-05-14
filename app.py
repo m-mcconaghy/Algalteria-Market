@@ -9,18 +9,21 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-# Load persisted pause/resume state
-loaded_running_state = True
-try:
-    if os.path.exists("market_state.json"):
-        with open("market_state.json", "r") as f:
-            loaded_state = json.load(f)
-            loaded_running_state = loaded_state.get("running", True)
-except Exception:
-    st.warning("⚠️ Corrupted market_state.json file. Using default (RUNNING).")
+# Safely load persisted running state
+def load_market_state():
+    try:
+        if os.path.exists("market_state.json"):
+            with open("market_state.json", "r") as f:
+                saved = json.load(f)
+                return saved.get("running", True)
+    except Exception:
+        st.warning("⚠️ Failed to read market_state.json — using default (RUNNING).")
+    return True  # fallback
 
+# Only initialize once
 if "running" not in st.session_state:
-    st.session_state.running = loaded_running_state
+    st.session_state.running = load_market_state()
+
 
 # Initial stock setup
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
