@@ -70,7 +70,7 @@ def update_prices():
         }
 
 # Autorefresh every 10 seconds
-count = st_autorefresh(interval=10 * 1000, key="market_heartbeat")
+count = st_autorefresh(interval=1 * 1000, key="market_heartbeat")
 
 # Track last update tick
 if "last_refresh_count" not in st.session_state:
