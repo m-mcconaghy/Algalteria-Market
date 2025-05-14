@@ -4,23 +4,33 @@ import numpy as np
 from datetime import datetime
 import time
 
-st.set_page_config(page_title="Starfinder Stock Exchange", layout="wide")
+st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
 # Initialize session state
 if "running" not in st.session_state:
     st.session_state.running = True
 if "stocks" not in st.session_state:
     st.session_state.stocks = pd.DataFrame({
-        "Ticker": ["ABM", "HZN", "SYL"],
-        "Name": ["Abadar Mining", "Horizon Energy", "Sylex Arms"],
-        "Price": [100.0, 120.0, 80.0],
-        "Volatility": [0.02, 0.03, 0.05]
+"Ticker": ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "TMF"],
+"Name": [
+    "Directorate Tech Fund", 
+    "Galactic Mining Guild", 
+    "Universal Services Fund", 
+    "The Textile Team", 
+    "Galactic Farmers Union", 
+    "Imperial Weapons Industry", 
+    "Epsilon Exchange", 
+    "Total Market Fund"
+],
+"Price": [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0, 100.0],
+"Volatility": [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018]
     })
+    
 if "price_history" not in st.session_state:
     st.session_state.price_history = pd.DataFrame(columns=["Timestamp", "Ticker", "Price"])
 
 # Title and status
-st.title("🌌 Starfinder Interstellar Stock Exchange")
+st.title("🌌 Algalteria Galactic Exchange (AGE)")
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
 # Pause/Resume toggle
