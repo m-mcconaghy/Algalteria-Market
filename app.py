@@ -75,6 +75,16 @@ if existing.empty:
     })
     df.to_sql("stocks", conn, if_exists="replace", index=False)
 
+# Ensure TMF always exists
+df_check = pd.read_sql("SELECT * FROM stocks", conn)
+if "TMF" not in df_check["Ticker"].values:
+    tmf_price = df_check["Price"].mean()
+    cursor.execute("""
+        INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+        VALUES (?, ?, ?, ?, ?)
+    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
+    conn.commit()
+
 # Header
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
 
@@ -89,15 +99,6 @@ else:
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
 # Price updater
-df_check = pd.read_sql("SELECT * FROM stocks", conn)
-if "TMF" not in df_check["Ticker"].values:
-    tmf_price = df_check["Price"].mean()
-    cursor.execute("""
-        INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-        VALUES (?, ?, ?, ?, ?)
-    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
-    conn.commit()
-
 def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
 
@@ -116,19 +117,9 @@ def update_prices():
 
     non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
     tmf_price = non_tmf_prices.mean()
+    df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
-    if "TMF" in df["Ticker"].values:
-        df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
-    else:
-        df.loc[len(df)] = {
-            "Ticker": "TMF",
-            "Name": "Total Market Fund",
-            "Price": tmf_price,
-            "Volatility": 0.0,
-            "InitialPrice": tmf_price
-        }
-
-    # Only update Price, not InitialPrice
+    # Update prices only
     for idx, row in df.iterrows():
         cursor.execute(
             "UPDATE stocks SET Price = ? WHERE Ticker = ?",
