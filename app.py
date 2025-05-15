@@ -176,7 +176,7 @@ if selected_ticker:
         price_padding = (max_price - min_price) * 0.1
 
         chart = alt.Chart(history).mark_line().encode(
-            x=alt.X("SimTime:Q", axis=alt.Axis(title="Simulated Minute")),
+            x=alt.X("SimTime:Q", axis=alt.Axis(title="Simulated 10-Minute")),
             y=alt.Y("Price:Q",
                 axis=alt.Axis(title="Price (cr)", grid=True),
                 scale=alt.Scale(domain=[min_price - price_padding, max_price + price_padding])
