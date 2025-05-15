@@ -89,8 +89,6 @@ else:
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
 # Price updater
-def update_prices():
-    # Ensure TMF always exists
 df_check = pd.read_sql("SELECT * FROM stocks", conn)
 if "TMF" not in df_check["Ticker"].values:
     tmf_price = df_check["Price"].mean()
@@ -100,6 +98,7 @@ if "TMF" not in df_check["Ticker"].values:
     """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
     conn.commit()
 
+def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
 
     for idx, row in df.iterrows():
