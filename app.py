@@ -120,7 +120,7 @@ def update_prices():
     conn.commit()
 
 # Auto-refresh every 10s (admin-only update loop)
-count = st_autorefresh(interval=10 * 1000, key="market_tick")
+count = st_autorefresh(interval=60 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 
@@ -132,7 +132,7 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 # Time status
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
-    next_tick = max(0, 10 - time_since)
+    next_tick = max(0, 60 - time_since)
     st.caption(f"⏱ Last update: {time_since}s ago — Next in: {next_tick}s")
 else:
     st.caption("⏱ Market has not updated yet.")
