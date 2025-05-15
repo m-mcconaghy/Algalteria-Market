@@ -64,7 +64,7 @@ if cursor.fetchone()[0] == 0:
             INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
             VALUES (?, ?, ?, ?, ?)
         """, (tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-    
+
     tmf_price = sum(initial_prices) / len(initial_prices)
     cursor.execute("""
         INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
@@ -85,15 +85,25 @@ else:
 
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
-# Price updater
+# Price updater — hybrid model
 def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
 
     for idx, row in df.iterrows():
         if row["Ticker"] == "TMF":
             continue
-        change = np.random.uniform(-row["Volatility"], row["Volatility"])
-        new_price = row["Price"] * (1 + change)
+
+        # Hybrid model
+        theta = 0.04
+        reversion = theta * (row["InitialPrice"] - row["Price"])
+
+        momentum = np.random.choice([1, -1], p=[0.52, 0.48])
+        regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
+        noise = np.random.normal(0, row["Volatility"] * regime_multiplier) * momentum
+
+        new_price = row["Price"] + reversion + noise * row["Price"]
+        new_price = max(new_price, 0.01)
+
         df.at[idx, "Price"] = new_price
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -136,6 +146,7 @@ styled_df = df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]
 st.dataframe(
     styled_df.style.format({
         "Price": "{:.2f}",
+        "Volatility": "{:.3f}",
         "$ Change": "{:+.2f}",
         "% Change": "{:+.2f}%"
     }),
@@ -157,7 +168,7 @@ if selected_ticker:
         history["Datetime"] = pd.to_datetime(history["Timestamp"])
         min_price = history["Price"].min()
         max_price = history["Price"].max()
-        price_padding = (max_price - min_price) * 0.1  # Add 10% margin
+        price_padding = (max_price - min_price) * 0.1
 
         chart = alt.Chart(history).mark_line().encode(
             x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
