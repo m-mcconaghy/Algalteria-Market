@@ -88,6 +88,16 @@ else:
 
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
+# Ensure TMF always exists
+df_check = pd.read_sql("SELECT * FROM stocks", conn)
+if "TMF" not in df_check["Ticker"].values:
+    tmf_price = df_check["Price"].mean()
+    cursor.execute("""
+        INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+        VALUES (?, ?, ?, ?, ?)
+    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
+    conn.commit()
+
 # Price updater
 def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
@@ -118,7 +128,7 @@ def update_prices():
     conn.commit()
 
 # Auto-refresh every 10s (admin-only updates)
-count = st_autorefresh(interval=10 * 1000, key="market_tick")
+count = st_autorefresh(interval=60 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 
@@ -130,7 +140,7 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 # Time since last update
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
-    next_tick = max(0, 10 - time_since)
+    next_tick = max(0, 60 - time_since)
     st.caption(f"⏱ Last update: {time_since}s ago — Next in: {next_tick}s")
 else:
     st.caption("⏱ Market has not updated yet.")
