@@ -1,7 +1,5 @@
 streamlit
 pandas
 numpy
-sqlite3
-streamlit-autorefresh
 altair
-datetime
+streamlit-autorefresh
