@@ -13,7 +13,7 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 conn = sqlite3.connect("market.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Ensure tables exist with correct schema
+# Ensure proper schema
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS stocks (
     Ticker TEXT PRIMARY KEY,
@@ -31,7 +31,7 @@ conn.commit()
 admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
 is_admin = st.text_input("Enter admin password", type="password") == admin_password
 
-# Load market status from DB
+# Load market running state
 def load_market_status():
     try:
         cursor.execute("SELECT value FROM market_status WHERE key='running'")
@@ -47,7 +47,7 @@ def save_market_status(running):
 if "running" not in st.session_state:
     st.session_state.running = load_market_status()
 
-# Initialize base tickers
+# Market initialization
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
@@ -56,19 +56,18 @@ names = [
 initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
 volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
 
-# Repopulate market (safe insert)
+# One-time population if DB is empty
 cursor.execute("SELECT COUNT(*) FROM stocks")
-row_count = cursor.fetchone()[0]
-if row_count == 0:
+if cursor.fetchone()[0] == 0:
     for i in range(len(tickers)):
         cursor.execute("""
-            INSERT OR REPLACE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+            INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
             VALUES (?, ?, ?, ?, ?)
         """, (tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-    # Add TMF
+    
     tmf_price = sum(initial_prices) / len(initial_prices)
     cursor.execute("""
-        INSERT OR REPLACE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+        INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
         VALUES (?, ?, ?, ?, ?)
     """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
     conn.commit()
@@ -106,14 +105,11 @@ def update_prices():
     tmf_price = df[df["Ticker"] != "TMF"]["Price"].mean()
     df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
-    for idx, row in df.iterrows():
-        cursor.execute(
-            "UPDATE stocks SET Price = ? WHERE Ticker = ?",
-            (row["Price"], row["Ticker"])
-        )
+    for _, row in df.iterrows():
+        cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
     conn.commit()
 
-# Auto-refresh every 10s (admin-only updates)
+# Auto-refresh every 10s (admin-only update loop)
 count = st_autorefresh(interval=10 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
@@ -123,7 +119,7 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
 
-# Time since last update
+# Time status
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
     next_tick = max(0, 10 - time_since)
@@ -131,7 +127,7 @@ if "last_update_time" in st.session_state:
 else:
     st.caption("⏱ Market has not updated yet.")
 
-# Show current stock data
+# Current market display
 df = pd.read_sql("SELECT * FROM stocks", conn)
 df["$ Change"] = df["Price"] - df["InitialPrice"]
 df["% Change"] = (df["$ Change"] / df["InitialPrice"]) * 100
@@ -146,7 +142,7 @@ st.dataframe(
     use_container_width=True
 )
 
-# Stock price chart
+# Stock chart
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
