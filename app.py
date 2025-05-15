@@ -75,16 +75,6 @@ if existing.empty:
     })
     df.to_sql("stocks", conn, if_exists="replace", index=False)
 
-# Ensure TMF always exists
-df_check = pd.read_sql("SELECT * FROM stocks", conn)
-if "TMF" not in df_check["Ticker"].values:
-    tmf_price = df_check["Price"].mean()
-    cursor.execute("""
-        INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-        VALUES (?, ?, ?, ?, ?)
-    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
-    conn.commit()
-
 # Header
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
 
@@ -125,6 +115,16 @@ def update_prices():
             "UPDATE stocks SET Price = ? WHERE Ticker = ?",
             (row["Price"], row["Ticker"])
         )
+    conn.commit()
+
+# Ensure TMF always exists
+df_check = pd.read_sql("SELECT * FROM stocks", conn)
+if "TMF" not in df_check["Ticker"].values:
+    tmf_price = df_check["Price"].mean()
+    cursor.execute("""
+        INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+        VALUES (?, ?, ?, ?, ?)
+    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
     conn.commit()
 
 # Auto-refresh every 10s (admin-only updates)
