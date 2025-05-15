@@ -154,25 +154,24 @@ if selected_ticker:
     )
 
     if not history.empty:
-    history["Datetime"] = pd.to_datetime(history["Timestamp"])
-    min_price = history["Price"].min()
-    max_price = history["Price"].max()
-    price_padding = (max_price - min_price) * 0.1  # Add 10% margin
+        history["Datetime"] = pd.to_datetime(history["Timestamp"])
+        min_price = history["Price"].min()
+        max_price = history["Price"].max()
+        price_padding = (max_price - min_price) * 0.1  # Add 10% margin
 
-    chart = alt.Chart(history).mark_line().encode(
-        x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
-        y=alt.Y("Price:Q",
-            axis=alt.Axis(title="Price (cr)", grid=True),
-            scale=alt.Scale(domain=[min_price - price_padding, max_price + price_padding])
-        ),
-        tooltip=["Datetime:T", "Price:Q"]
-    ).properties(
-        title=f"{selected_ticker} Price History",
-        width="container",
-        height=300
-    ).interactive()
+        chart = alt.Chart(history).mark_line().encode(
+            x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
+            y=alt.Y("Price:Q",
+                axis=alt.Axis(title="Price (cr)", grid=True),
+                scale=alt.Scale(domain=[min_price - price_padding, max_price + price_padding])
+            ),
+            tooltip=["Datetime:T", "Price:Q"]
+        ).properties(
+            title=f"{selected_ticker} Price History",
+            width="container",
+            height=300
+        ).interactive()
 
-    st.altair_chart(chart, use_container_width=True)
-
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No price history available yet.")
