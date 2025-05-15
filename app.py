@@ -34,7 +34,7 @@ def save_market_status(running):
 if "running" not in st.session_state:
     st.session_state.running = load_market_status()
 
-# Stock definitions
+# Initial setup if DB is empty
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
@@ -43,31 +43,24 @@ names = [
 initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
 volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
 
-# Load or create stock data
-if "stocks" not in st.session_state:
-    cursor.execute("SELECT * FROM stocks")
-    rows = cursor.fetchall()
-    if rows:
-        df = pd.DataFrame(rows, columns=["Ticker", "Name", "Price", "Volatility"])
-    else:
-        df = pd.DataFrame({
-            "Ticker": tickers,
-            "Name": names,
-            "Price": initial_prices,
-            "Volatility": volatility
-        })
-        df.to_sql("stocks", conn, if_exists="replace", index=False)
-    st.session_state.stocks = df
-    st.session_state.initial_prices = dict(zip(df["Ticker"], df["Price"]))
-
-# Load price history
-if "price_history" not in st.session_state:
+if "initial_prices" not in st.session_state:
     try:
-        st.session_state.price_history = pd.read_sql("SELECT * FROM price_history", conn)
+        current_stocks = pd.read_sql("SELECT * FROM stocks", conn)
+        if current_stocks.empty:
+            df = pd.DataFrame({
+                "Ticker": tickers,
+                "Name": names,
+                "Price": initial_prices,
+                "Volatility": volatility
+            })
+            df.to_sql("stocks", conn, if_exists="replace", index=False)
+            st.session_state.initial_prices = dict(zip(df["Ticker"], df["Price"]))
+        else:
+            st.session_state.initial_prices = dict(zip(current_stocks["Ticker"], current_stocks["Price"]))
     except:
-        st.session_state.price_history = pd.DataFrame(columns=["Timestamp", "Ticker", "Price"])
+        st.session_state.initial_prices = dict(zip(tickers, initial_prices))
 
-# UI: Title and toggle
+# Title and toggle
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
@@ -77,7 +70,7 @@ if st.button("⏯ Pause / Resume Market"):
 
 # Price update logic
 def update_prices():
-    df = st.session_state.stocks.copy()
+    df = pd.read_sql("SELECT * FROM stocks", conn)
 
     for idx, row in df.iterrows():
         if row["Ticker"] == "TMF":
@@ -86,13 +79,12 @@ def update_prices():
         df.at[idx, "Price"] *= (1 + change)
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.session_state.price_history.loc[len(st.session_state.price_history)] = {
-            "Timestamp": timestamp,
-            "Ticker": row["Ticker"],
-            "Price": df.at[idx, "Price"]
-        }
+        cursor.execute(
+            "INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+            (timestamp, row["Ticker"], df.at[idx, "Price"])
+        )
 
-    # Recalculate TMF as average
+    # Recalculate TMF
     non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
     tmf_price = non_tmf_prices.mean()
     if "TMF" in df["Ticker"].values:
@@ -106,9 +98,8 @@ def update_prices():
         }
         st.session_state.initial_prices["TMF"] = tmf_price
 
-    st.session_state.stocks = df
     df.to_sql("stocks", conn, if_exists="replace", index=False)
-    st.session_state.price_history.to_sql("price_history", conn, if_exists="replace", index=False)
+    conn.commit()
 
 # Auto-refresh every 10 seconds
 count = st_autorefresh(interval=10 * 1000, key="market_heartbeat")
@@ -120,7 +111,7 @@ if st.session_state.running and count != st.session_state.last_refresh_count:
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
 
-# Show time status
+# Show update timing
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
     next_tick = max(0, 10 - time_since)
@@ -128,35 +119,37 @@ if "last_update_time" in st.session_state:
 else:
     st.caption("⏱ Market has not updated yet.")
 
-# Show price table with change
-df = st.session_state.stocks.copy()
+# Live market data display (shared)
+df = pd.read_sql("SELECT * FROM stocks", conn)
 df["$ Change"] = df["Price"] - df["Ticker"].map(st.session_state.initial_prices)
 df["% Change"] = (df["$ Change"] / df["Ticker"].map(st.session_state.initial_prices)) * 100
 styled_df = df[["Ticker", "Name", "Price", "$ Change", "% Change"]]
 
 st.dataframe(
     styled_df.style.format({
-        "Price": "{:.2f}", 
-        "$ Change": "{:+.2f}", 
+        "Price": "{:.2f}",
+        "$ Change": "{:+.2f}",
         "% Change": "{:+.2f}%"
     }),
     use_container_width=True
 )
 
-# Interactive chart
+# Chart view
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
 if selected_ticker:
     import altair as alt
 
-    history = st.session_state.price_history[
-        st.session_state.price_history["Ticker"] == selected_ticker
-    ].copy()
+    history = pd.read_sql(
+        f"SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
+        conn,
+        params=(selected_ticker,)
+    )
 
     if not history.empty:
         history["Datetime"] = pd.to_datetime(history["Timestamp"])
-        chart = alt.Chart(history).mark_line(point=False).encode(
+        chart = alt.Chart(history).mark_line().encode(
             x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
             y=alt.Y("Price:Q", axis=alt.Axis(title="Price (cr)")),
             tooltip=["Datetime:T", "Price:Q"]
