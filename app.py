@@ -27,6 +27,14 @@ cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker
 cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
 conn.commit()
 
+# 🩹 One-time schema patch: add InitialPrice if missing
+cursor.execute("PRAGMA table_info(stocks)")
+columns = [row[1] for row in cursor.fetchall()]
+if "InitialPrice" not in columns:
+    cursor.execute("ALTER TABLE stocks ADD COLUMN InitialPrice REAL")
+    cursor.execute("UPDATE stocks SET InitialPrice = Price")
+    conn.commit()
+
 # Admin authentication
 admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
 is_admin = st.text_input("Enter admin password", type="password") == admin_password
@@ -100,8 +108,7 @@ def update_prices():
     non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
     tmf_price = non_tmf_prices.mean()
 
-    tmf_exists = "TMF" in df["Ticker"].values
-    if tmf_exists:
+    if "TMF" in df["Ticker"].values:
         df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
     else:
         df.loc[len(df)] = {
@@ -112,7 +119,7 @@ def update_prices():
             "InitialPrice": tmf_price
         }
 
-    # Update only the price (not InitialPrice)
+    # Only update Price, not InitialPrice
     for idx, row in df.iterrows():
         cursor.execute(
             "UPDATE stocks SET Price = ? WHERE Ticker = ?",
@@ -120,7 +127,7 @@ def update_prices():
         )
     conn.commit()
 
-# Trigger price updates (admin only)
+# Auto-refresh every 10s (admin-only updates)
 count = st_autorefresh(interval=10 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
@@ -130,7 +137,7 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
 
-# Update caption
+# Time since last update
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
     next_tick = max(0, 10 - time_since)
@@ -138,7 +145,7 @@ if "last_update_time" in st.session_state:
 else:
     st.caption("⏱ Market has not updated yet.")
 
-# Display current market
+# Current prices with changes
 df = pd.read_sql("SELECT * FROM stocks", conn)
 df["$ Change"] = df["Price"] - df["InitialPrice"]
 df["% Change"] = (df["$ Change"] / df["InitialPrice"]) * 100
@@ -153,7 +160,7 @@ st.dataframe(
     use_container_width=True
 )
 
-# Graph view
+# Chart view
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
