@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime
 import time
 from streamlit_autorefresh import st_autorefresh
+import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
@@ -18,7 +19,11 @@ cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker
 cursor.execute("CREATE TABLE IF NOT EXISTS stocks (Ticker TEXT PRIMARY KEY, Name TEXT, Price REAL, Volatility REAL)")
 conn.commit()
 
-# Load persisted market status
+# Admin authentication
+admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
+is_admin = st.text_input("Enter admin password", type="password") == admin_password
+
+# Load running state
 def load_market_status():
     try:
         cursor.execute("SELECT value FROM market_status WHERE key='running'")
@@ -34,7 +39,7 @@ def save_market_status(running):
 if "running" not in st.session_state:
     st.session_state.running = load_market_status()
 
-# Initial setup if DB is empty
+# Setup market if not already populated
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
@@ -44,31 +49,31 @@ initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
 volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
 
 if "initial_prices" not in st.session_state:
-    try:
-        current_stocks = pd.read_sql("SELECT * FROM stocks", conn)
-        if current_stocks.empty:
-            df = pd.DataFrame({
-                "Ticker": tickers,
-                "Name": names,
-                "Price": initial_prices,
-                "Volatility": volatility
-            })
-            df.to_sql("stocks", conn, if_exists="replace", index=False)
-            st.session_state.initial_prices = dict(zip(df["Ticker"], df["Price"]))
-        else:
-            st.session_state.initial_prices = dict(zip(current_stocks["Ticker"], current_stocks["Price"]))
-    except:
-        st.session_state.initial_prices = dict(zip(tickers, initial_prices))
+    df = pd.read_sql("SELECT * FROM stocks", conn)
+    if df.empty:
+        df = pd.DataFrame({
+            "Ticker": tickers,
+            "Name": names,
+            "Price": initial_prices,
+            "Volatility": volatility
+        })
+        df.to_sql("stocks", conn, if_exists="replace", index=False)
+    st.session_state.initial_prices = dict(zip(df["Ticker"], df["Price"]))
 
-# Title and toggle
+# Header
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
+
+if is_admin:
+    st.success("🧑‍🚀 Admin mode enabled")
+    if st.button("⏯ Pause / Resume Market"):
+        st.session_state.running = not st.session_state.running
+        save_market_status(st.session_state.running)
+else:
+    st.info("🛰 Viewer mode — live market feed only")
+
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
-if st.button("⏯ Pause / Resume Market"):
-    st.session_state.running = not st.session_state.running
-    save_market_status(st.session_state.running)
-
-# Price update logic
+# Price updater
 def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
 
@@ -84,7 +89,6 @@ def update_prices():
             (timestamp, row["Ticker"], df.at[idx, "Price"])
         )
 
-    # Recalculate TMF
     non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
     tmf_price = non_tmf_prices.mean()
     if "TMF" in df["Ticker"].values:
@@ -101,17 +105,17 @@ def update_prices():
     df.to_sql("stocks", conn, if_exists="replace", index=False)
     conn.commit()
 
-# Auto-refresh every 10 seconds
-count = st_autorefresh(interval=10 * 1000, key="market_heartbeat")
+# Trigger price updates (admin only)
+count = st_autorefresh(interval=10 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 
-if st.session_state.running and count != st.session_state.last_refresh_count:
+if is_admin and st.session_state.running and count != st.session_state.last_refresh_count:
     update_prices()
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
 
-# Show update timing
+# Update caption
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
     next_tick = max(0, 10 - time_since)
@@ -119,7 +123,7 @@ if "last_update_time" in st.session_state:
 else:
     st.caption("⏱ Market has not updated yet.")
 
-# Live market data display (shared)
+# Display current market
 df = pd.read_sql("SELECT * FROM stocks", conn)
 df["$ Change"] = df["Price"] - df["Ticker"].map(st.session_state.initial_prices)
 df["% Change"] = (df["$ Change"] / df["Ticker"].map(st.session_state.initial_prices)) * 100
@@ -134,15 +138,13 @@ st.dataframe(
     use_container_width=True
 )
 
-# Chart view
+# Graph view
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
 if selected_ticker:
-    import altair as alt
-
     history = pd.read_sql(
-        f"SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
+        "SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
         conn,
         params=(selected_ticker,)
     )
