@@ -170,7 +170,7 @@ if selected_ticker:
     )
 
     if not history.empty:
-        history["SimTime"] = history["Timestamp"].astype(int)
+        history["SimTime"] = pd.to_numeric(history["Timestamp"], errors="coerce").dropna().astype(int)
         min_price = history["Price"].min()
         max_price = history["Price"].max()
         price_padding = (max_price - min_price) * 0.1
