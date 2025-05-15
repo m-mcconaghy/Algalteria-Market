@@ -13,10 +13,9 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 conn = sqlite3.connect("market.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 💥 Reset market: Drop and recreate stocks table with full schema
-cursor.execute("DROP TABLE IF EXISTS stocks")
+# Ensure tables exist with correct schema
 cursor.execute("""
-CREATE TABLE stocks (
+CREATE TABLE IF NOT EXISTS stocks (
     Ticker TEXT PRIMARY KEY,
     Name TEXT,
     Price REAL,
@@ -32,7 +31,7 @@ conn.commit()
 admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
 is_admin = st.text_input("Enter admin password", type="password") == admin_password
 
-# Load running state
+# Load market status from DB
 def load_market_status():
     try:
         cursor.execute("SELECT value FROM market_status WHERE key='running'")
@@ -48,7 +47,7 @@ def save_market_status(running):
 if "running" not in st.session_state:
     st.session_state.running = load_market_status()
 
-# Define base tickers
+# Initialize base tickers
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
@@ -57,23 +56,22 @@ names = [
 initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
 volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
 
-# Initialize market data
-df = pd.DataFrame({
-    "Ticker": tickers,
-    "Name": names,
-    "Price": initial_prices,
-    "Volatility": volatility,
-    "InitialPrice": initial_prices
-})
-df.to_sql("stocks", conn, if_exists="replace", index=False)
-
-# Add TMF row
-tmf_price = df["Price"].mean()
-cursor.execute("""
-    INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-    VALUES (?, ?, ?, ?, ?)
-""", ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
-conn.commit()
+# Repopulate market (safe insert)
+cursor.execute("SELECT COUNT(*) FROM stocks")
+row_count = cursor.fetchone()[0]
+if row_count == 0:
+    for i in range(len(tickers)):
+        cursor.execute("""
+            INSERT OR REPLACE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+            VALUES (?, ?, ?, ?, ?)
+        """, (tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
+    # Add TMF
+    tmf_price = sum(initial_prices) / len(initial_prices)
+    cursor.execute("""
+        INSERT OR REPLACE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+        VALUES (?, ?, ?, ?, ?)
+    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
+    conn.commit()
 
 # Header
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
@@ -105,7 +103,6 @@ def update_prices():
             (timestamp, row["Ticker"], new_price)
         )
 
-    # Recalculate TMF
     tmf_price = df[df["Ticker"] != "TMF"]["Price"].mean()
     df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
@@ -134,7 +131,7 @@ if "last_update_time" in st.session_state:
 else:
     st.caption("⏱ Market has not updated yet.")
 
-# Current prices with changes
+# Show current stock data
 df = pd.read_sql("SELECT * FROM stocks", conn)
 df["$ Change"] = df["Price"] - df["InitialPrice"]
 df["% Change"] = (df["$ Change"] / df["InitialPrice"]) * 100
@@ -149,7 +146,7 @@ st.dataframe(
     use_container_width=True
 )
 
-# Chart view
+# Stock price chart
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
