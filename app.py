@@ -13,9 +13,10 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 conn = sqlite3.connect("market.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Ensure required tables exist
+# 💥 Reset market: Drop and recreate stocks table with full schema
+cursor.execute("DROP TABLE IF EXISTS stocks")
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS stocks (
+CREATE TABLE stocks (
     Ticker TEXT PRIMARY KEY,
     Name TEXT,
     Price REAL,
@@ -26,14 +27,6 @@ CREATE TABLE IF NOT EXISTS stocks (
 cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker TEXT, Price REAL)")
 cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
 conn.commit()
-
-# 🩹 One-time schema patch: add InitialPrice if missing
-cursor.execute("PRAGMA table_info(stocks)")
-columns = [row[1] for row in cursor.fetchall()]
-if "InitialPrice" not in columns:
-    cursor.execute("ALTER TABLE stocks ADD COLUMN InitialPrice REAL")
-    cursor.execute("UPDATE stocks SET InitialPrice = Price")
-    conn.commit()
 
 # Admin authentication
 admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
@@ -55,7 +48,7 @@ def save_market_status(running):
 if "running" not in st.session_state:
     st.session_state.running = load_market_status()
 
-# Setup market if not already populated
+# Define base tickers
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
@@ -64,16 +57,23 @@ names = [
 initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
 volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
 
-existing = pd.read_sql("SELECT * FROM stocks", conn)
-if existing.empty:
-    df = pd.DataFrame({
-        "Ticker": tickers,
-        "Name": names,
-        "Price": initial_prices,
-        "Volatility": volatility,
-        "InitialPrice": initial_prices
-    })
-    df.to_sql("stocks", conn, if_exists="replace", index=False)
+# Initialize market data
+df = pd.DataFrame({
+    "Ticker": tickers,
+    "Name": names,
+    "Price": initial_prices,
+    "Volatility": volatility,
+    "InitialPrice": initial_prices
+})
+df.to_sql("stocks", conn, if_exists="replace", index=False)
+
+# Add TMF row
+tmf_price = df["Price"].mean()
+cursor.execute("""
+    INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+    VALUES (?, ?, ?, ?, ?)
+""", ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
+conn.commit()
 
 # Header
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
@@ -87,16 +87,6 @@ else:
     st.info("🛰 Viewer mode — live market feed only")
 
 st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
-
-# Ensure TMF always exists
-df_check = pd.read_sql("SELECT * FROM stocks", conn)
-if "TMF" not in df_check["Ticker"].values:
-    tmf_price = df_check["Price"].mean()
-    cursor.execute("""
-        INSERT OR IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-        VALUES (?, ?, ?, ?, ?)
-    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
-    conn.commit()
 
 # Price updater
 def update_prices():
@@ -115,11 +105,10 @@ def update_prices():
             (timestamp, row["Ticker"], new_price)
         )
 
-    non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
-    tmf_price = non_tmf_prices.mean()
+    # Recalculate TMF
+    tmf_price = df[df["Ticker"] != "TMF"]["Price"].mean()
     df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
-    # Update prices only
     for idx, row in df.iterrows():
         cursor.execute(
             "UPDATE stocks SET Price = ? WHERE Ticker = ?",
@@ -128,7 +117,7 @@ def update_prices():
     conn.commit()
 
 # Auto-refresh every 10s (admin-only updates)
-count = st_autorefresh(interval=60 * 1000, key="market_tick")
+count = st_autorefresh(interval=10 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 
@@ -140,7 +129,7 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 # Time since last update
 if "last_update_time" in st.session_state:
     time_since = int(time.time() - st.session_state.last_update_time)
-    next_tick = max(0, 60 - time_since)
+    next_tick = max(0, 10 - time_since)
     st.caption(f"⏱ Last update: {time_since}s ago — Next in: {next_tick}s")
 else:
     st.caption("⏱ Market has not updated yet.")
