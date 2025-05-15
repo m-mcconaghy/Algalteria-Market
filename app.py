@@ -14,9 +14,17 @@ conn = sqlite3.connect("market.db", check_same_thread=False)
 cursor = conn.cursor()
 
 # Ensure required tables exist
-cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS stocks (
+    Ticker TEXT PRIMARY KEY,
+    Name TEXT,
+    Price REAL,
+    Volatility REAL,
+    InitialPrice REAL
+)
+""")
 cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker TEXT, Price REAL)")
-cursor.execute("CREATE TABLE IF NOT EXISTS stocks (Ticker TEXT PRIMARY KEY, Name TEXT, Price REAL, Volatility REAL)")
+cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
 conn.commit()
 
 # Admin authentication
@@ -48,17 +56,16 @@ names = [
 initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0]
 volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06]
 
-if "initial_prices" not in st.session_state:
-    df = pd.read_sql("SELECT * FROM stocks", conn)
-    if df.empty:
-        df = pd.DataFrame({
-            "Ticker": tickers,
-            "Name": names,
-            "Price": initial_prices,
-            "Volatility": volatility
-        })
-        df.to_sql("stocks", conn, if_exists="replace", index=False)
-    st.session_state.initial_prices = dict(zip(df["Ticker"], df["Price"]))
+existing = pd.read_sql("SELECT * FROM stocks", conn)
+if existing.empty:
+    df = pd.DataFrame({
+        "Ticker": tickers,
+        "Name": names,
+        "Price": initial_prices,
+        "Volatility": volatility,
+        "InitialPrice": initial_prices
+    })
+    df.to_sql("stocks", conn, if_exists="replace", index=False)
 
 # Header
 st.title("🌌 Algalteria Galactic Exchange (AGE)")
@@ -81,28 +88,36 @@ def update_prices():
         if row["Ticker"] == "TMF":
             continue
         change = np.random.uniform(-row["Volatility"], row["Volatility"])
-        df.at[idx, "Price"] *= (1 + change)
+        new_price = row["Price"] * (1 + change)
+        df.at[idx, "Price"] = new_price
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute(
             "INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
-            (timestamp, row["Ticker"], df.at[idx, "Price"])
+            (timestamp, row["Ticker"], new_price)
         )
 
     non_tmf_prices = df[df["Ticker"] != "TMF"]["Price"]
     tmf_price = non_tmf_prices.mean()
-    if "TMF" in df["Ticker"].values:
+
+    tmf_exists = "TMF" in df["Ticker"].values
+    if tmf_exists:
         df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
     else:
         df.loc[len(df)] = {
             "Ticker": "TMF",
             "Name": "Total Market Fund",
             "Price": tmf_price,
-            "Volatility": 0.0
+            "Volatility": 0.0,
+            "InitialPrice": tmf_price
         }
-        st.session_state.initial_prices["TMF"] = tmf_price
 
-    df.to_sql("stocks", conn, if_exists="replace", index=False)
+    # Update only the price (not InitialPrice)
+    for idx, row in df.iterrows():
+        cursor.execute(
+            "UPDATE stocks SET Price = ? WHERE Ticker = ?",
+            (row["Price"], row["Ticker"])
+        )
     conn.commit()
 
 # Trigger price updates (admin only)
@@ -125,8 +140,8 @@ else:
 
 # Display current market
 df = pd.read_sql("SELECT * FROM stocks", conn)
-df["$ Change"] = df["Price"] - df["Ticker"].map(st.session_state.initial_prices)
-df["% Change"] = (df["$ Change"] / df["Ticker"].map(st.session_state.initial_prices)) * 100
+df["$ Change"] = df["Price"] - df["InitialPrice"]
+df["% Change"] = (df["$ Change"] / df["InitialPrice"]) * 100
 styled_df = df[["Ticker", "Name", "Price", "$ Change", "% Change"]]
 
 st.dataframe(
