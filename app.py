@@ -47,6 +47,10 @@ def save_market_status(running):
 if "running" not in st.session_state:
     st.session_state.running = load_market_status()
 
+# Simulated time counter
+if "sim_time" not in st.session_state:
+    st.session_state.sim_time = 0  # each tick = 1 market minute
+
 # Market initialization
 tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
@@ -96,7 +100,6 @@ def update_prices():
         # Hybrid model
         theta = 0.04
         reversion = theta * (row["InitialPrice"] - row["Price"])
-
         momentum = np.random.choice([1, -1], p=[0.52, 0.48])
         regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
         noise = np.random.normal(0, row["Volatility"] * regime_multiplier) * momentum
@@ -106,7 +109,8 @@ def update_prices():
 
         df.at[idx, "Price"] = new_price
 
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Use internal sim_time as timestamp
+        timestamp = str(st.session_state.sim_time)
         cursor.execute(
             "INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
             (timestamp, row["Ticker"], new_price)
@@ -118,8 +122,9 @@ def update_prices():
     for _, row in df.iterrows():
         cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
     conn.commit()
+    st.session_state.sim_time += 1  # advance internal time by 1 tick (1 minute)
 
-# Auto-refresh every 10s (admin-only update loop)
+# Auto-refresh every 60s (admin-only update loop)
 count = st_autorefresh(interval=60 * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
@@ -153,30 +158,30 @@ st.dataframe(
     use_container_width=True
 )
 
-# Stock chart
+# Stock chart using internal sim time
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", df["Ticker"])
 
 if selected_ticker:
     history = pd.read_sql(
-        "SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
+        "SELECT * FROM price_history WHERE Ticker = ? ORDER BY CAST(Timestamp AS INTEGER)",
         conn,
         params=(selected_ticker,)
     )
 
     if not history.empty:
-        history["Datetime"] = pd.to_datetime(history["Timestamp"])
+        history["SimTime"] = history["Timestamp"].astype(int)
         min_price = history["Price"].min()
         max_price = history["Price"].max()
         price_padding = (max_price - min_price) * 0.1
 
         chart = alt.Chart(history).mark_line().encode(
-            x=alt.X("Datetime:T", axis=alt.Axis(title="Time", format="%H:%M", labelAngle=0)),
+            x=alt.X("SimTime:Q", axis=alt.Axis(title="Simulated Minute")),
             y=alt.Y("Price:Q",
                 axis=alt.Axis(title="Price (cr)", grid=True),
                 scale=alt.Scale(domain=[min_price - price_padding, max_price + price_padding])
             ),
-            tooltip=["Datetime:T", "Price:Q"]
+            tooltip=["SimTime", "Price"]
         ).properties(
             title=f"{selected_ticker} Price History",
             width="container",
