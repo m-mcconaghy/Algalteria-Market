@@ -129,9 +129,9 @@ else:
 
 # Current market display
 df = pd.read_sql("SELECT * FROM stocks", conn)
-df["All-time $ Change"] = df["Price"] - df["InitialPrice"]
-df["All-time % Change"] = (df["All-time $ Change"] / df["InitialPrice"]) * 100
-styled_df = df[["Ticker", "Name", "Price", "Volatility", "All-time $ Change", "All-time % Change"]]
+df["$ Change"] = df["Price"] - df["InitialPrice"]
+df["% Change"] = (df["All-time $ Change"] / df["InitialPrice"]) * 100
+styled_df = df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]]
 
 st.dataframe(
     styled_df.style.format({
