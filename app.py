@@ -72,18 +72,18 @@ if cursor.fetchone()[0] == 0:
     """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
     conn.commit()
 
-st.title("🌌 Algalteria Galactic Exchange (AGE)")
+st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
 
 if is_admin:
-    st.success("🧑‍🚀 Admin mode enabled")
+    st.success("\U0001F9D1‍\U0001F680 Admin mode enabled")
     if st.button("⏯ Pause / Resume Market"):
         st.session_state.running = not st.session_state.running
         cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
         conn.commit()
 else:
-    st.info("🛰 Viewer mode — live market feed only")
+    st.info("\U0001F6F8 Viewer mode — live market feed only")
 
-st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
+st.subheader(f"\U0001F4C8 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
 # Price update function
 def update_prices():
@@ -121,11 +121,16 @@ if is_admin:
             st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
         st.divider()
         st.markdown("#### Advance Simulation")
-        ticks_to_run = st.number_input("Advance market by ticks", min_value=1, max_value=5000, value=1)
-        if st.button("Advance Time"):
-            for _ in range(ticks_to_run):
-                update_prices()
-            st.success(f"Advanced market by {ticks_to_run} ticks.")
+        if st.button("Advance 1 Hour"):
+            for _ in range(60): update_prices()
+        if st.button("Advance 1 Day"):
+            for _ in range(360): update_prices()
+        if st.button("Advance 1 Week"):
+            for _ in range(2520): update_prices()
+        if st.button("Advance 1 Month"):
+            for _ in range(7200): update_prices()
+        if st.button("Advance 1 Year"):
+            for _ in range(86400): update_prices()
         st.divider()
         st.markdown("#### Stock-Specific Volatility")
         tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
