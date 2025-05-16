@@ -80,15 +80,17 @@ if is_admin:
         st.session_state.running = not st.session_state.running
         cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
         conn.commit()
-    if st.button("🧹 Reset Market Data"):
-        if st.confirm("Are you sure you want to reset all market data? This cannot be undone."):
-            cursor.execute("DELETE FROM price_history")
-            for i in range(len(base_tickers)):
-                cursor.execute("UPDATE stocks SET Price=?, Volatility=?, InitialPrice=? WHERE Ticker=?", (initial_prices[i], volatility[i], initial_prices[i], base_tickers[i]))
-            cursor.execute("UPDATE stocks SET Price=?, Volatility=?, InitialPrice=? WHERE Ticker='TMF'", (tmf_price, 0.0, tmf_price))
-            st.session_state.sim_time = 0
-            conn.commit()
-            st.warning("Market data has been reset.")
+
+    with st.expander("⚙️ Admin Tools"):
+        if st.button("🧹 Reset Market Data"):
+            if st.confirm("Are you sure you want to reset all market data? This action is irreversible."):
+                cursor.execute("DELETE FROM price_history")
+                for i in range(len(base_tickers)):
+                    cursor.execute("UPDATE stocks SET Price=?, Volatility=?, InitialPrice=? WHERE Ticker=?", (initial_prices[i], volatility[i], initial_prices[i], base_tickers[i]))
+                cursor.execute("UPDATE stocks SET Price=?, Volatility=?, InitialPrice=? WHERE Ticker='TMF'", (tmf_price, 0.0, tmf_price))
+                st.session_state.sim_time = 0
+                conn.commit()
+                st.warning("Market data has been reset.")
 else:
     st.info("\U0001F6F8 Viewer mode — live market feed only")
 
