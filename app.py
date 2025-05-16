@@ -12,7 +12,6 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 conn = sqlite3.connect("market.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Ensure schema
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS stocks (
     Ticker TEXT PRIMARY KEY,
@@ -29,6 +28,7 @@ conn.commit()
 admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
 is_admin = st.text_input("Enter admin password", type="password") == admin_password
 
+# Market state
 if "running" not in st.session_state:
     try:
         cursor.execute("SELECT value FROM market_status WHERE key='running'")
@@ -40,12 +40,16 @@ if "running" not in st.session_state:
 if "sim_time" not in st.session_state:
     st.session_state.sim_time = 0
 
-if "tick_interval" not in st.session_state:
-    st.session_state.tick_interval = 60  # default in seconds
+if "tick_interval_sec" not in st.session_state:
+    st.session_state.tick_interval_sec = 60
 
 if "risk_free_rate" not in st.session_state:
-    st.session_state.risk_free_rate = 0.075 / 360  # 7.5% annualized -> daily drift
+    st.session_state.risk_free_rate = 0.075
 
+if "market_conditions" not in st.session_state:
+    st.session_state.market_conditions = "Normal"
+
+# Initial setup
 base_tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
@@ -68,42 +72,49 @@ if cursor.fetchone()[0] == 0:
     """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
     conn.commit()
 
-st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
+st.title("🌌 Algalteria Galactic Exchange (AGE)")
 
 if is_admin:
-    st.success("\U0001F9D1‍\U0001F680 Admin mode enabled")
+    st.success("🧑‍🚀 Admin mode enabled")
     if st.button("⏯ Pause / Resume Market"):
         st.session_state.running = not st.session_state.running
         cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
         conn.commit()
 else:
-    st.info("\U0001F6F8 Viewer mode — live market feed only")
+    st.info("🛰 Viewer mode — live market feed only")
 
-st.subheader(f"\U0001F4C8 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
+st.subheader(f"📈 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
-# Price update function with drift
-
+# Price update function
 def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
     for idx, row in df.iterrows():
         if row["Ticker"] == "TMF":
             continue
-        drift = st.session_state.risk_free_rate * row["Price"]
         theta = 0.04
         reversion = theta * (row["InitialPrice"] - row["Price"])
+
         momentum = np.random.choice([1, -1], p=[0.52, 0.48])
         regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
-        noise = np.random.normal(0, row["Volatility"] * regime_multiplier) * momentum
-        new_price = max(row["Price"] + drift + reversion + noise * row["Price"], 0.01)
+
+        # Adjusted volatility per tick (1/360th of a day)
+        scaled_vol = row["Volatility"] * np.sqrt(1 / 360)
+        noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
+
+        drift = (st.session_state.risk_free_rate / 360) * row["Price"]
+
+        new_price = max(row["Price"] + reversion + noise * row["Price"] + drift, 0.01)
         df.at[idx, "Price"] = new_price
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                        (str(st.session_state.sim_time), row["Ticker"], new_price))
+
     df.loc[df["Ticker"] == "TMF", "Price"] = df[df["Ticker"] != "TMF"]["Price"].mean()
     for _, row in df.iterrows():
         cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
     conn.commit()
     st.session_state.sim_time += 1
 
+# Manual advance and controls
 if is_admin:
     with st.expander("⚙️ Admin Tools"):
         ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
@@ -115,18 +126,24 @@ if is_admin:
             conn.commit()
             st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
         st.divider()
-        st.markdown("#### Manual Advance")
-        if st.button("Advance Time One Tick"):
-            update_prices()
-            st.success("Advanced one tick.")
-        st.markdown("#### Risk-Free Rate")
-        new_rate = st.slider("Annual Risk-Free Rate (%)", 0.0, 20.0, value=7.5, step=0.1)
-        st.session_state.risk_free_rate = new_rate / 100 / 360
-        st.markdown("#### Tick Interval")
-        tick_input = st.number_input("Tick update interval (seconds)", min_value=5, max_value=3600, value=st.session_state.tick_interval)
-        st.session_state.tick_interval = tick_input
+        ticks_to_run = st.number_input("Advance market by ticks", min_value=1, max_value=5000, value=1)
+        if st.button("Advance Time"):
+            for _ in range(ticks_to_run):
+                update_prices()
+            st.success(f"Advanced market by {ticks_to_run} ticks.")
+        st.divider()
+        st.markdown("#### Global Settings")
+        new_vol = st.number_input("Set volatility for all non-TMF stocks", min_value=0.001, value=0.02)
+        if st.button("Apply Volatility"):
+            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker != 'TMF'", (new_vol,))
+            conn.commit()
+        st.slider("Set Risk-Free Rate", min_value=0.00, max_value=0.20, step=0.001, value=st.session_state.risk_free_rate, key="risk_free_rate")
+        st.selectbox("Set Market Conditions (not yet implemented)", ["Normal", "Boom", "Recession", "Stagflation", "War"], key="market_conditions")
+        tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
+        st.session_state.tick_interval_sec = tick_rate
 
-count = st_autorefresh(interval=st.session_state.tick_interval * 1000, key="market_tick")
+# Auto-refresh
+count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 if is_admin and st.session_state.running and count != st.session_state.last_refresh_count:
@@ -136,8 +153,9 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 
 if "last_update_time" in st.session_state:
     elapsed = int(time.time() - st.session_state.last_update_time)
-    st.caption(f"⏱ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval - elapsed)}s")
+    st.caption(f"⏱ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
 
+# Market Display
 stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
 stocks_df["$ Change"] = stocks_df["Price"] - stocks_df["InitialPrice"]
 stocks_df["% Change"] = (stocks_df["$ Change"] / stocks_df["InitialPrice"]) * 100
@@ -148,6 +166,7 @@ st.dataframe(
     use_container_width=True
 )
 
+# Charting
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
 if selected_ticker:
