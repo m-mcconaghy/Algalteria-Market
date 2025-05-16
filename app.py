@@ -80,6 +80,15 @@ if is_admin:
         st.session_state.running = not st.session_state.running
         cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
         conn.commit()
+    if st.button("🧹 Reset Market Data"):
+        if st.confirm("Are you sure you want to reset all market data? This cannot be undone."):
+            cursor.execute("DELETE FROM price_history")
+            for i in range(len(base_tickers)):
+                cursor.execute("UPDATE stocks SET Price=?, Volatility=?, InitialPrice=? WHERE Ticker=?", (initial_prices[i], volatility[i], initial_prices[i], base_tickers[i]))
+            cursor.execute("UPDATE stocks SET Price=?, Volatility=?, InitialPrice=? WHERE Ticker='TMF'", (tmf_price, 0.0, tmf_price))
+            st.session_state.sim_time = 0
+            conn.commit()
+            st.warning("Market data has been reset.")
 else:
     st.info("\U0001F6F8 Viewer mode — live market feed only")
 
@@ -108,46 +117,6 @@ def update_prices():
     conn.commit()
     st.session_state.sim_time += 1
 
-# Admin controls
-if is_admin:
-    with st.expander("⚙️ Admin Tools"):
-        ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
-        price_change = st.number_input("New price", min_value=0.01)
-        if st.button("Apply Price Change"):
-            cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
-            cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
-                           (str(st.session_state.sim_time), ticker_to_change, price_change))
-            conn.commit()
-            st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
-        st.divider()
-        st.markdown("#### Advance Simulation")
-        if st.button("Advance 1 Hour"):
-            for _ in range(60): update_prices()
-        if st.button("Advance 1 Day"):
-            for _ in range(360): update_prices()
-        if st.button("Advance 1 Week"):
-            for _ in range(2520): update_prices()
-        if st.button("Advance 1 Month"):
-            for _ in range(7200): update_prices()
-        if st.button("Advance 1 Year"):
-            for _ in range(1000): update_prices()
-        st.divider()
-        st.markdown("#### Stock-Specific Volatility")
-        tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
-        selected_vol_ticker = st.selectbox("Select a stock to update volatility", tickers)
-        current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
-        new_vol = st.number_input("New Volatility", value=current_vol, key=f"vol_{selected_vol_ticker}")
-        if st.button("Apply Volatility Change"):
-            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
-            conn.commit()
-            st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
-        st.divider()
-        st.markdown("#### Risk-Free Rate")
-        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
-        st.session_state.risk_free_rate = new_rfr
-        tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
-        st.session_state.tick_interval_sec = tick_rate
-
 count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
@@ -158,7 +127,7 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 
 if "last_update_time" in st.session_state:
     elapsed = int(time.time() - st.session_state.last_update_time)
-    st.caption(f"⏱ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
+    st.caption(f"⏱ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s | Simulated Time: {st.session_state.sim_time} ticks")
 
 stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
 stocks_df["$ Change"] = stocks_df["Price"] - stocks_df["InitialPrice"]
