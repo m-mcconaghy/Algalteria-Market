@@ -46,6 +46,9 @@ if "tick_interval_sec" not in st.session_state:
 if "risk_free_rate" not in st.session_state:
     st.session_state.risk_free_rate = 0.075
 
+if "equity_risk_premium" not in st.session_state:
+    st.session_state.equity_risk_premium = 0.05
+
 if "market_conditions" not in st.session_state:
     st.session_state.market_conditions = "Normal"
 
@@ -97,7 +100,8 @@ def update_prices():
         regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
         scaled_vol = row["Volatility"] * np.sqrt(1 / 360)
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
-        drift = (st.session_state.risk_free_rate / 360) * row["Price"]
+        drift_rate = (st.session_state.risk_free_rate + st.session_state.equity_risk_premium) / 360
+        drift = drift_rate * row["Price"]
         new_price = max(row["Price"] + reversion + noise * row["Price"] + drift, 0.01)
         df.at[idx, "Price"] = new_price
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
@@ -130,7 +134,7 @@ if is_admin:
         if st.button("Advance 1 Month"):
             for _ in range(7200): update_prices()
         if st.button("Advance 1 Year"):
-            for _ in range(1000): update_prices()
+            for _ in range(86400): update_prices()
         st.divider()
         st.markdown("#### Stock-Specific Volatility")
         tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
@@ -142,9 +146,11 @@ if is_admin:
             conn.commit()
             st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
         st.divider()
-        st.markdown("#### Risk-Free Rate")
+        st.markdown("#### Risk-Free Rate and Equity Premium")
         new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
         st.session_state.risk_free_rate = new_rfr
+        new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
+        st.session_state.equity_risk_premium = new_erp
         tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
         st.session_state.tick_interval_sec = tick_rate
 
