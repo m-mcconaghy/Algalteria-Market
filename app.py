@@ -128,14 +128,17 @@ if is_admin:
             st.success(f"Advanced market by {ticks_to_run} ticks.")
         st.divider()
         st.markdown("#### Stock-Specific Volatility")
-        volatility_df = pd.read_sql("SELECT Ticker, Volatility FROM stocks", conn)
-        for _, row in volatility_df.iterrows():
-            new_vol = st.number_input(f"{row['Ticker']} volatility", value=row['Volatility'], key=f"vol_{row['Ticker']}")
-            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, row['Ticker']))
-        conn.commit()
+        tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
+        selected_vol_ticker = st.selectbox("Select a stock to update volatility", tickers)
+        current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
+        new_vol = st.number_input("New Volatility", value=current_vol, key=f"vol_{selected_vol_ticker}")
+        if st.button("Apply Volatility Change"):
+            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
+            conn.commit()
+            st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
         st.divider()
         st.markdown("#### Risk-Free Rate")
-        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.001)
+        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
         st.session_state.risk_free_rate = new_rfr
         tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
         st.session_state.tick_interval_sec = tick_rate
