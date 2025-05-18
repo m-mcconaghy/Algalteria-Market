@@ -66,31 +66,6 @@ if "market_sentiment" not in st.session_state:
     st.session_state.market_sentiment = "Booming"
 
 
-# --- Initial Stock Data ---
-base_tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "NEC", "ARC", "SOL", "AWE", "ORB", "QNT", "AGX", "LCO", "FMC", "SYX", "VLT", "EXR", "CRB"]
-names = ["Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund", "The Textile Team", "Galactic Farmers Union", "Imperial Weapons Industry", "Epsilon Exchange", "Nebular Energy Consortium", "Asteroid Resources Collective", "Solar Operations League", "Algalterian Water Exchange", "Orbital Rare Biotech", "Quantum Nexus Trust", "Agricultural Exports Guild", "Lunar Construction Outfit", "Frontier Medical Consortium", "Syphonix Energy Systems", "Veltrax AI Logistics", "Exorium Rare Elements", "Crystalline Banking Network"]
-initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0, 91.0, 87.5, 102.0, 78.0, 113.0, 139.0, 84.0, 62.0, 144.0, 193.0, 119.0, 221.0, 68.0]
-volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018, 0.025, 0.02, 0.015, 0.045, 0.03, 0.017, 0.023, 0.014, 0.055, 0.027, 0.06, 0.018]
-
-# --- Initialize Stocks Table ---
-cursor.execute("SELECT COUNT(*) FROM stocks")
-if cursor.fetchone()[0] == 0:
-    for i in range(len(base_tickers)):
-        cursor.execute("""
-            INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-            VALUES (?, ?, ?, ?, ?)
-        """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-    tmf_price = np.average(initial_prices, weights=initial_prices)
-    tmf_vol = np.average(volatility, weights=initial_prices)
-    cursor.execute("""
-        INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-        VALUES (?, ?, ?, ?, ?)
-    """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
-    conn.commit()
-
-# --- Header and Market Status ---
-st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
-
 # --- Database Upload ---
 uploaded_file = st.file_uploader("Upload Database File", type=["db"])
 if uploaded_file is not None:
@@ -105,6 +80,9 @@ if uploaded_file is not None:
     for key in st.session_state.keys():
         del st.session_state[key]
 
+# --- Header and Market Status ---
+st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
+
 col_status, col_admin = st.columns([3, 1])
 with col_status:
     st.markdown(f"### \U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
@@ -117,6 +95,20 @@ with col_admin:
             conn.commit()
     else:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
+
+# --- Download Button ---
+def download_database():
+    with open(DATABASE_PATH, "rb") as f:
+        db_bytes = f.read()
+    st.download_button(
+        label="💾 Download Current Database",
+        data=db_bytes,
+        file_name="market_data.db",
+        mime="application/octet-stream"
+    )
+
+download_database()
+st.markdown("---")
 
 # --- Set the TIME ---
 SIM_START_DATE = pd.Timestamp("2200-01-01")
@@ -202,20 +194,6 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 if "last_update_time" in st.session_state:
     elapsed = int(time.time() - st.session_state.last_update_time)
     st.caption(f"⏱️ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
-
-# --- Download Button ---
-def download_database():
-    with open(DATABASE_PATH, "rb") as f:
-        db_bytes = f.read()
-    st.download_button(
-        label="💾 Download Current Database",
-        data=db_bytes,
-        file_name="market_data.db",
-        mime="application/octet-stream"
-    )
-
-download_database()
-st.markdown("---")
 
 # --- Display Stock Data ---
 st.markdown("### 📈 Current Stock Prices")
