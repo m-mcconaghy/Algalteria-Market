@@ -67,18 +67,19 @@ if "market_sentiment" not in st.session_state:
 
 
 # --- Database Upload ---
-uploaded_file = st.file_uploader("Upload Database File", type=["db"])
-if uploaded_file is not None:
-    with open(DATABASE_PATH, "wb") as f:
-        f.write(uploaded_file.read())
-    st.success("Database file uploaded successfully! Please refresh the page to load the data.")
-    # Re-establish the database connection after upload
-    conn.close()
-    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
-    cursor = conn.cursor()
-    # Clear session state to force reload (optional, but can prevent issues)
-    for key in st.session_state.keys():
-        del st.session_state[key]
+if is_admin:
+    uploaded_file = st.file_uploader("Upload Database File", type=["db"])
+    if uploaded_file is not None:
+        with open(DATABASE_PATH, "wb") as f:
+            f.write(uploaded_file.read())
+        st.success("Database file uploaded successfully! Please refresh the page to load the data.")
+        # Re-establish the database connection after upload
+        conn.close()
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        cursor = conn.cursor()
+        # Clear session state to force reload (optional, but can prevent issues)
+        for key in st.session_state.keys():
+            del st.session_state[key]
 
 # --- Header and Market Status ---
 st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
