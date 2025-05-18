@@ -99,6 +99,10 @@ else:
 
 st.subheader(f"\U0001F4C8 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
+# Set the TIME
+SIM_START_DATE = datetime(2200, 1, 1)  # or any fictional start point
+
+
 # Final update_prices function
 
 def update_prices():
@@ -112,6 +116,10 @@ def update_prices():
         scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
         momentum = np.random.choice([1, -1])
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
+        sim_timestamp = SIM_START_DATE + timedelta(hours=st.session_state.sim_time)
+        cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+                       (sim_timestamp.isoformat(), row["Ticker"], new_price))
+
 
         financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
         sentiment_multiplier = {
@@ -254,10 +262,24 @@ if is_admin:
         st.session_state.market_sentiment = selected_sentiment
 
 if selected_ticker:
-    hist = pd.read_sql("SELECT * FROM price_history WHERE Ticker = ? ORDER BY CAST(Timestamp AS INTEGER)", conn, params=(selected_ticker,))
+    hist = pd.read_sql(
+        "SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
+        conn,
+        params=(selected_ticker,)
+    )
+
     if not hist.empty:
-        hist["SimTime"] = pd.to_numeric(hist["Timestamp"], errors="coerce").astype(int)
-        view_range = st.radio("Select timeframe:", ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"], horizontal=True)
+        # Parse timestamp and derive simulation tick
+        hist["Date"] = pd.to_datetime(hist["Timestamp"], errors="coerce")
+        hist["SimTime"] = (hist["Date"] - SIM_START_DATE).dt.total_seconds() // 3600
+        hist["SimTime"] = hist["SimTime"].astype(int)
+
+        # Time-based filtering
+        view_range = st.radio(
+            "Select timeframe:",
+            ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"],
+            horizontal=True
+        )
 
         if view_range == "1 Day":
             hist = hist[hist["SimTime"] >= st.session_state.sim_time - 24]
@@ -268,20 +290,24 @@ if selected_ticker:
         elif view_range == "3 Months":
             hist = hist[hist["SimTime"] >= st.session_state.sim_time - 2160]
         elif view_range == "Year to Date":
-            hist = hist[hist["SimTime"] >= 0]  # Simplified for now
+            hist = hist[hist["SimTime"] >= 0]  # You can later refine with real YTD calc
         elif view_range == "1Y":
             hist = hist[hist["SimTime"] >= st.session_state.sim_time - 8640]
-        # else Alltime: no filter
+        # Alltime: no filtering
 
+        # Build the chart
         low, high = hist["Price"].min(), hist["Price"].max()
         padding = (high - low) * 0.1
 
         chart = alt.Chart(hist).mark_line().encode(
-            x=alt.X("SimTime:Q", axis=alt.Axis(title="Simulated Time (ticks)"), scale=alt.Scale(nice=False)),
+            x=alt.X("Date:T", axis=alt.Axis(title="Simulated Date")),
             y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
                    axis=alt.Axis(title="Price (cr)", grid=True)),
-            tooltip=["SimTime", "Price"]
+            tooltip=["Date:T", "Price"]
         ).properties(title=f"{selected_ticker} Price History", width="container", height=300)
+
         st.altair_chart(chart, use_container_width=True)
+
     else:
         st.info("No price history available yet.")
+
