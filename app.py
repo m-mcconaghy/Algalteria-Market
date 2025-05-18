@@ -96,14 +96,23 @@ def update_prices():
         if row["Ticker"] == "TMF":
             continue
         theta = 0.04
-        reversion = theta * (row["InitialPrice"] - row["Price"])
         momentum = np.random.choice([1, -1], p=[0.52, 0.48])
         regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
         scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
-        drift_rate = (st.session_state.risk_free_rate + st.session_state.equity_risk_premium) / 24
+        financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
+        sentiment_drift = market_sentiment_options.get(st.session_state.get("market_sentiment", "Booming"), 0.03)
+        drift_rate = (financial_drift + sentiment_drift) / 24  # hybrid drift
         drift = drift_rate * row["Price"]
-        new_price = max(row["Price"] + reversion + noise * row["Price"] + drift, 0.01)
+        # Rare large shocks (2% chance)
+        shock_chance = np.random.rand()
+        if shock_chance < 0.02:
+            shock_factor = np.random.choice([0.5, 1.5], p=[0.5, 0.5])  # 50% chance crash or surge
+        else:
+            shock_factor = 1.0
+        new_price = max((row["Price"] + noise * row["Price"] + drift) * shock_factor, 0.01)
+        growth_factor = 1 + ((st.session_state.risk_free_rate + st.session_state.equity_risk_premium) / (24 * 365))  # daily compounding approx
+        new_initial_price = row["InitialPrice"] * growth_factor
         df.at[idx, "Price"] = new_price
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                        (str(st.session_state.sim_time), row["Ticker"], new_price))
@@ -141,6 +150,14 @@ st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
 
 # Admin controls
+market_sentiment_options = {
+    "Bubbling": 0.07,     # extra strong upward
+    "Booming": 0.03,      # moderately bullish
+    "Stagnant": 0.00,     # flat
+    "Receding": -0.02,    # downward trend
+    "Depression": -0.05   # heavy bearish pressure
+}
+
 if is_admin:
     with st.expander("⚙️ Admin Tools"):
         ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
@@ -181,6 +198,12 @@ if is_admin:
         st.session_state.equity_risk_premium = new_erp
         tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
         st.session_state.tick_interval_sec = tick_rate
+
+        st.divider()
+        st.markdown("#### Market Sentiment Drift")
+        selected_sentiment = st.selectbox("Set Market Sentiment", list(market_sentiment_options.keys()), index=1)
+        st.session_state.market_sentiment = selected_sentiment
+
 
 if selected_ticker:
     hist = pd.read_sql("SELECT * FROM price_history WHERE Ticker = ? ORDER BY CAST(Timestamp AS INTEGER)", conn, params=(selected_ticker,))
