@@ -192,12 +192,20 @@ if "last_update_time" in st.session_state:
 stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
 stocks_df["$ Change"] = stocks_df["Price"] - stocks_df["InitialPrice"]
 stocks_df["% Change"] = (stocks_df["$ Change"] / stocks_df["InitialPrice"]) * 100
+stocks_df = stocks_df.sort_values("Ticker").reset_index(drop=True)
+
 st.dataframe(
-    stocks_df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]].style.format({
-        "Price": "{:.2f}", "Volatility": "{:.3f}", "$ Change": "+{:.2f}", "% Change": "+{:.2f}%"
+    stocks_df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]]
+    .style.format({
+        "Price": "{:.2f}",
+        "Volatility": "{:.3f}",
+        "$ Change": "+{:.2f}",
+        "% Change": "+{:.2f}%"
     }),
-    use_container_width=True
+    use_container_width=True,
+    height=600  # optional: make room for full list
 )
+
 
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
