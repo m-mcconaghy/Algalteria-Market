@@ -81,9 +81,6 @@ with col_admin:
     else:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
 
-download_database()
-st.markdown("---")
-
 # --- Set the TIME ---
 SIM_START_DATE = pd.Timestamp("2200-01-01")
 
