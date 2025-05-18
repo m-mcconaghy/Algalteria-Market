@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
