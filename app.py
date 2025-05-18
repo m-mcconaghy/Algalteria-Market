@@ -189,7 +189,7 @@ def update_prices(ticks=1):
 count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
-if is_admin and st.session_state.running and count != st.session_state.last_refresh_count:
+if is_admin and market_running and count != st.session_state.last_refresh_count:
     update_prices()
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
