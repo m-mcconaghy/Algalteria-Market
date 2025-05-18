@@ -89,59 +89,64 @@ else:
 
 st.subheader(f"\U0001F4C8 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
-# Price update function
+# Final update_prices function
+
 def update_prices():
     df = pd.read_sql("SELECT * FROM stocks", conn)
+
     for idx, row in df.iterrows():
         if row["Ticker"] == "TMF":
             continue
-        theta = 0.04
-        momentum = np.random.choice([1, -1], p=[0.52, 0.48])
+
         regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
         scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
+        momentum = np.random.choice([1, -1])
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
-        # Hybrid drift model with sentiment multiplier
+
         financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
-        
-        # Sentiment multiplier influences direction and magnitude
         sentiment_multiplier = {
-            "Bubbling": 1.5,
-            "Booming": 1.0,
-            "Stagnant": 0.0,
-            "Receding": -0.5,
-            "Depression": -1.0
+            "Bubbling": 0.03,
+            "Booming": 0.01,
+            "Stagnant": 0.00,
+            "Receding": -0.02,
+            "Depression": -0.05
         }
         selected_sentiment = st.session_state.get("market_sentiment", "Booming")
         mult = sentiment_multiplier.get(selected_sentiment, 1.0)
-        
-        drift_rate = (financial_drift * mult) / 24  # convert annual to hourly
-
+        drift_rate = (financial_drift * mult) / 24
         drift = np.clip(drift_rate * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
-        # Rare large shocks (2% chance)
-        shock_chance = np.random.rand()
+
         shock_factor = 1.0
-        if np.random.rand() < 0.001:  # 0.1% chance
-            shock_factor = np.random.choice([0.9, 1.1], p=[0.5, 0.5])
-        if np.random.rand() < 0.0001:  # rare extreme event
-            shock_factor = np.random.choice([0.7, 1.3], p=[0.5, 0.5])
-        else:
-            shock_factor = 1.0
-        price = row["Price"] * shock_factor  # apply first
-        new_price = max(price + noise * price + drift, 0.01)
-        if st.session_state.sim_time % 24 == 0:  # once per simulated day
-            new_initial_price = row["InitialPrice"] * 1.0005  # ~0.05% daily growth
+        if np.random.rand() < 0.001:
+            shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5])
+
+        base_price = row["Price"] * shock_factor
+        new_price = base_price + noise * base_price + drift
+
+        max_change = 0.02
+        min_price = row["Price"] * (1 - max_change)
+        max_price = row["Price"] * (1 + max_change)
+        new_price = float(np.clip(new_price, min_price, max_price))
+        new_price = max(new_price, 0.01)
+
+        if st.session_state.sim_time % 24 == 0:
+            new_initial_price = row["InitialPrice"] * 1.0005
             cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?", (new_initial_price, row["Ticker"]))
+
         df.at[idx, "Price"] = new_price
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                        (str(st.session_state.sim_time), row["Ticker"], new_price))
+
     tmf_data = df[df["Ticker"] != "TMF"]
     tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
     df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
+
     for _, row in df.iterrows():
         cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
+
     conn.commit()
     st.session_state.sim_time += 1
-
+    
 count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
