@@ -98,12 +98,12 @@ with col_status:
 with col_admin:
     if is_admin:
     st.success("\U0001F9D1‍\U0001F680 Admin Mode")
+
     if st.button("⏯ Pause / Resume Market"):
         new_state = not st.session_state.running
         cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(new_state)))
         conn.commit()
         st.session_state.running = new_state
-
     else:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
 
