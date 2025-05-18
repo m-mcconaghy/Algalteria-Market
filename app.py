@@ -305,7 +305,7 @@ if is_admin:
     st.sidebar.header("⚙️ Admin Tools")
     
     with st.sidebar.expander("Database Upload"):
-        uploaded_file = st.file_uploader("Upload Database File", type=["db"])
+        st.uploaded_file = st.file_uploader("Upload Database File", type=["db"])
         if uploaded_file is not None:
             with open(DATABASE_PATH, "wb") as f:
                 f.write(uploaded_file.read())
