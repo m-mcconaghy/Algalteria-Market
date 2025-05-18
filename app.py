@@ -100,7 +100,7 @@ else:
 st.subheader(f"\U0001F4C8 Market Status: {'🟢 RUNNING' if st.session_state.running else '🔴 PAUSED'}")
 
 # Set the TIME
-SIM_START_DATE = datetime(2200, 1, 1)  # or any fictional start point
+SIM_START_DATE = pd.Timestamp("2200-01-01")
 
 
 # Final update_prices function
