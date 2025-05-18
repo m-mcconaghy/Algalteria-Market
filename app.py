@@ -52,49 +52,6 @@ if "equity_risk_premium" not in st.session_state:
 if "market_conditions" not in st.session_state:
     st.session_state.market_conditions = "Normal"
 
-# Admin controls
-if is_admin:
-    with st.expander("⚙️ Admin Tools"):
-        ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
-        price_change = st.number_input("New price", min_value=0.01)
-        if st.button("Apply Price Change"):
-            cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
-            cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
-                           (str(st.session_state.sim_time), ticker_to_change, price_change))
-            conn.commit()
-            st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
-        st.divider()
-        st.markdown("#### Advance Simulation")
-        if st.button("Advance 1 Hour"):
-            for _ in range(60): update_prices()
-        if st.button("Advance 1 Day"):
-            for _ in range(360): update_prices()
-        if st.button("Advance 1 Week"):
-            for _ in range(2520): update_prices()
-        if st.button("Advance 1 Month"):
-            for _ in range(7200): update_prices()
-        if st.button("Advance 1 Year"):
-            for _ in range(86400): update_prices()
-        st.divider()
-        st.markdown("#### Stock-Specific Volatility")
-        tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
-        selected_vol_ticker = st.selectbox("Select a stock to update volatility", tickers)
-        current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
-        new_vol = st.number_input("New Volatility", value=current_vol, key=f"vol_{selected_vol_ticker}")
-        if st.button("Apply Volatility Change"):
-            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
-            conn.commit()
-            st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
-        st.divider()
-        st.markdown("#### Risk-Free Rate and Equity Premium")
-        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
-        st.session_state.risk_free_rate = new_rfr
-        new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
-        st.session_state.equity_risk_premium = new_erp
-        tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
-        st.session_state.tick_interval_sec = tick_rate
-
-
 # Initial setup
 base_tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE"]
 names = [
@@ -182,6 +139,48 @@ st.dataframe(
 
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
+
+# Admin controls
+if is_admin:
+    with st.expander("⚙️ Admin Tools"):
+        ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
+        price_change = st.number_input("New price", min_value=0.01)
+        if st.button("Apply Price Change"):
+            cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
+            cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+                           (str(st.session_state.sim_time), ticker_to_change, price_change))
+            conn.commit()
+            st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
+        st.divider()
+        st.markdown("#### Advance Simulation")
+        if st.button("Advance 1 Hour"):
+            for _ in range(60): update_prices()
+        if st.button("Advance 1 Day"):
+            for _ in range(360): update_prices()
+        if st.button("Advance 1 Week"):
+            for _ in range(2520): update_prices()
+        if st.button("Advance 1 Month"):
+            for _ in range(7200): update_prices()
+        if st.button("Advance 1 Year"):
+            for _ in range(86400): update_prices()
+        st.divider()
+        st.markdown("#### Stock-Specific Volatility")
+        tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
+        selected_vol_ticker = st.selectbox("Select a stock to update volatility", tickers)
+        current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
+        new_vol = st.number_input("New Volatility", value=current_vol, key=f"vol_{selected_vol_ticker}")
+        if st.button("Apply Volatility Change"):
+            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
+            conn.commit()
+            st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
+        st.divider()
+        st.markdown("#### Risk-Free Rate and Equity Premium")
+        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
+        st.session_state.risk_free_rate = new_rfr
+        new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
+        st.session_state.equity_risk_premium = new_erp
+        tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
+        st.session_state.tick_interval_sec = tick_rate
 
 if selected_ticker:
     hist = pd.read_sql("SELECT * FROM price_history WHERE Ticker = ? ORDER BY CAST(Timestamp AS INTEGER)", conn, params=(selected_ticker,))
