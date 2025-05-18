@@ -104,8 +104,8 @@ with col_admin:
         cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(new_state)))
         conn.commit()
         st.session_state.running = new_state
-    else:
-        st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
+else:
+    st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
 
 # --- Set the TIME ---
 SIM_START_DATE = pd.Timestamp("2200-01-01")
