@@ -1,4 +1,18 @@
 import streamlit as st
+import os
+
+DATABASE_PATH = "market.db"
+
+# --- Early DB Upload (before any logic touches the DB) ---
+st.sidebar.header("⚙️ Admin Tools")
+with st.sidebar.expander("📂 Upload New Database (Before Init)"):
+    uploaded_file = st.file_uploader("Upload SQLite DB", type=["db"], key="early_db_upload")
+    if uploaded_file is not None:
+        with open(DATABASE_PATH, "wb") as f:
+            f.write(uploaded_file.read())
+        st.success("✅ Database uploaded. Please refresh or wait a moment.")
+        st.stop()  # Prevent all other logic from using the old DB
+
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -6,7 +20,6 @@ from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
-import os
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 DATABASE_PATH = "market.db"
@@ -488,20 +501,9 @@ if selected_ticker:
 if is_admin:
     st.sidebar.header("⚙️ Admin Tools")
 
-    with st.sidebar.expander("Database Upload"):
-        uploaded_file = st.file_uploader("Upload Database File", type=["db"])
-        if uploaded_file is not None:
-            try:
-                with open(DATABASE_PATH, "wb") as f:
-                    f.write(uploaded_file.read())
-                st.success("Database file uploaded successfully! Please refresh the page to load the data.")
-
-                # Clear session state to force reload
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun() # Use st.rerun()
-            except Exception as e:
-                st.error(f"Error handling uploaded database: {e}")
+    if st.button("Restore Default DB"):
+    os.remove(DATABASE_PATH)
+    st.experimental_rerun()
 
     st.sidebar.divider()
     with st.sidebar.expander("🎯 Manual Stock Controls"):
