@@ -79,7 +79,7 @@ if cursor.fetchone()[0] == 0:
             INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
             VALUES (?, ?, ?, ?, ?)
         """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-    tmf_price = np.average(initial_prices, weights=volatility)
+    tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
     tmf_vol = np.average(volatility, weights=initial_prices)
     cursor.execute("""
         INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
@@ -144,7 +144,8 @@ def update_prices(ticks=1):
 
             base_price = row["Price"] * shock_factor
             new_price = base_price + noise * base_price + drift
-            new_price = float(np.clip(new_price, row["Price"] * 0.98, row["Price"] * 1.02))
+            limit = 0.01  # 1% per tick
+            new_price = float(np.clip(new_price, row["Price"] * (1 - limit), row["Price"] * (1 + limit)))
             new_price = max(new_price, 0.01)
 
             # Update InitialPrice once per real day
