@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
+TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
@@ -105,62 +106,67 @@ SIM_START_DATE = pd.Timestamp("2200-01-01")
 
 # Final update_prices function
 
-def update_prices():
-    df = pd.read_sql("SELECT * FROM stocks", conn)
+def update_prices(ticks=1):
+    for _ in range(ticks):
+        df = pd.read_sql("SELECT * FROM stocks", conn)
+        tick_scale = 24 / TICKS_PER_DAY  # how many hours this tick simulates
 
-    for idx, row in df.iterrows():
-        if row["Ticker"] == "TMF":
-            continue
+        for idx, row in df.iterrows():
+            if row["Ticker"] == "TMF":
+                continue
 
-        # === Compute components first ===
-        regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
-        scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
-        momentum = np.random.choice([1, -1])
-        noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
+            # Scaled volatility for the current tick resolution
+            regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
+            scaled_vol = row["Volatility"] * np.sqrt(tick_scale / 24)
+            momentum = np.random.choice([1, -1])
+            noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
 
-        financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
-        sentiment_multiplier = {
-            "Bubbling": 0.03,
-            "Booming": 0.01,
-            "Stagnant": 0.00,
-            "Receding": -0.02,
-            "Depression": -0.05
-        }
-        selected_sentiment = st.session_state.get("market_sentiment", "Booming")
-        mult = sentiment_multiplier.get(selected_sentiment, 1.0)
-        drift_rate = (financial_drift * mult) / 24
-        drift = np.clip(drift_rate * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
+            # Drift with scaled time
+            financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
+            sentiment_multiplier = {
+                "Bubbling": 0.03,
+                "Booming": 0.01,
+                "Stagnant": 0.00,
+                "Receding": -0.02,
+                "Depression": -0.05
+            }
+            selected_sentiment = st.session_state.get("market_sentiment", "Booming")
+            mult = sentiment_multiplier.get(selected_sentiment, 1.0)
+            drift_rate = (financial_drift * mult) / 24
+            drift = np.clip(drift_rate * tick_scale * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
 
-        shock_factor = 1.0
-        if np.random.rand() < 0.001:
-            shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5])
+            # Optional: adjust shock chance for tick scale (roughly per day chance = 0.1%)
+            daily_shock_chance = 0.001
+            shock_chance = 1 - (1 - daily_shock_chance) ** (tick_scale / 24)
+            shock_factor = 1.0
+            if np.random.rand() < shock_chance:
+                shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5])
 
-        base_price = row["Price"] * shock_factor
-        new_price = base_price + noise * base_price + drift
-        new_price = float(np.clip(new_price, row["Price"] * 0.98, row["Price"] * 1.02))
-        new_price = max(new_price, 0.01)
+            base_price = row["Price"] * shock_factor
+            new_price = base_price + noise * base_price + drift
+            new_price = float(np.clip(new_price, row["Price"] * 0.98, row["Price"] * 1.02))
+            new_price = max(new_price, 0.01)
 
-        # Update InitialPrice once per day
-        if st.session_state.sim_time % 24 == 0:
-            new_initial_price = row["InitialPrice"] * 1.0005
-            cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?", (new_initial_price, row["Ticker"]))
+            # Update InitialPrice once per real day
+            if st.session_state.sim_time % 24 == 0:
+                new_initial_price = row["InitialPrice"] * 1.0005
+                cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?", (new_initial_price, row["Ticker"]))
 
-        # Save new price
-        df.at[idx, "Price"] = new_price
-        sim_timestamp = SIM_START_DATE + timedelta(hours=st.session_state.sim_time)
-        cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
-                       (sim_timestamp.isoformat(), row["Ticker"], new_price))
+            df.at[idx, "Price"] = new_price
+            sim_timestamp = SIM_START_DATE + timedelta(hours=st.session_state.sim_time)
+            cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+                           (sim_timestamp.isoformat(), row["Ticker"], new_price))
 
-    # Update TMF based on weighted average
-    tmf_data = df[df["Ticker"] != "TMF"]
-    tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
-    df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
+        # Update TMF based on weighted average
+        tmf_data = df[df["Ticker"] != "TMF"]
+        tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
+        df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
-    for _, row in df.iterrows():
-        cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
+        for _, row in df.iterrows():
+            cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
 
-    conn.commit()
-    st.session_state.sim_time += 1
+        conn.commit()
+        st.session_state.sim_time += 1
 
     
 count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
@@ -220,15 +226,15 @@ if is_admin:
             if st.button("Advance 1 Hour"):
                 update_prices()
             if st.button("Advance 1 Day"):
-                for _ in range(24): update_prices()
+                update_prices(ticks=TICKS_PER_DAY)
         with col2:
             if st.button("Advance 1 Week"):
-                for _ in range(168): update_prices()
+                update_prices(ticks=7 * TICKS_PER_DAY)
             if st.button("Advance 1 Month"):
-                for _ in range(5040): update_prices()
+                update_prices(ticks=30 * TICKS_PER_DAY)
         with col3:
             if st.button("Advance 1 Year"):
-                for _ in range(60480): update_prices()
+                update_prices(ticks=365 * TICKS_PER_DAY)
 
         st.divider()
         st.markdown("### 📉 Adjust Stock Volatility")
