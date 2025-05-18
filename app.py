@@ -9,6 +9,9 @@ import altair as alt
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
+DATABASE_PATH = "market.db"
+conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
 # --- Database Connection ---
