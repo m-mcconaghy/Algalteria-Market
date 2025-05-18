@@ -281,12 +281,7 @@ if selected_ticker:
 
         if view_range == "1 Day":
             hist = hist[hist["SimTime"] >= st.session_state.sim_time - 24]
-            # Show hourly resolution
-            if view_range == "1 Day":
-                x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
-            else:
-                hist["Date"] = hist["Date"].dt.floor("D")
-                x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))  # e.g. 'May 18'
+            x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
 
         else:
             if view_range == "1 Week":
@@ -299,14 +294,11 @@ if selected_ticker:
                 hist = hist[hist["SimTime"] >= 0]
             elif view_range == "1Y":
                 hist = hist[hist["SimTime"] >= st.session_state.sim_time - 8640]
-            # For larger views, snap dates to day resolution
-            hist["Date"] = hist["Date"].dt.floor("D")
-            if view_range == "1 Day":
-                x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
-            else:
-                hist["Date"] = hist["Date"].dt.floor("D")
-                x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))  # e.g. 'May 18'
 
+            # Round to day and average price per day
+            hist["Date"] = hist["Date"].dt.floor("D")
+            hist = hist.groupby("Date", as_index=False).agg({"Price": "mean"})
+            x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
 
         # Build the chart
         low, high = hist["Price"].min(), hist["Price"].max()
@@ -315,7 +307,7 @@ if selected_ticker:
         chart = alt.Chart(hist).mark_line().encode(
             x=x_field,
             y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
-                   axis=alt.Axis(title="Price (cr)", grid=True)),
+                    axis=alt.Axis(title="Price (cr)", grid=True)),
             tooltip=["Date:T", "Price"]
         ).properties(title=f"{selected_ticker} Price History", width="container", height=300)
 
