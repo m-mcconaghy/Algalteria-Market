@@ -302,7 +302,7 @@ if is_admin:
             if st.button("Advance 1 Hour"):
                 update_prices()
             if st.button("Advance 1 Day"):
-                update_prices(ticks=TICKS_PER_DAY)
+                update_prices(ticks=24)
         with col_advance2:
             if st.button("Advance 1 Week"):
                 update_prices(ticks=7 * TICKS_PER_DAY)
