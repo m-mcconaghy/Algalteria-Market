@@ -100,9 +100,22 @@ def update_prices():
         regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
         scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
+        # Hybrid drift model with sentiment multiplier
         financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
-        sentiment_drift = market_sentiment_options.get(st.session_state.get("market_sentiment", "Booming"), 0.03)
-        drift_rate = (financial_drift + sentiment_drift) / 24  # hybrid drift
+        
+        # Sentiment multiplier influences direction and magnitude
+        sentiment_multiplier = {
+            "Bubbling": 1.5,
+            "Booming": 1.0,
+            "Stagnant": 0.0,
+            "Receding": -0.5,
+            "Depression": -1.0
+        }
+        selected_sentiment = st.session_state.get("market_sentiment", "Booming")
+        mult = sentiment_multiplier.get(selected_sentiment, 1.0)
+        
+        drift_rate = (financial_drift * mult) / 24  # convert annual to hourly
+
         drift = drift_rate * row["Price"]
         # Rare large shocks (2% chance)
         shock_chance = np.random.rand()
@@ -158,52 +171,76 @@ market_sentiment_options = {
     "Depression": -0.05   # heavy bearish pressure
 }
 
+# Admin controls
+market_sentiment_options = {
+    "Bubbling": 0.07,
+    "Booming": 0.03,
+    "Stagnant": 0.00,
+    "Receding": -0.02,
+    "Depression": -0.05
+}
+
 if is_admin:
     with st.expander("⚙️ Admin Tools"):
-        ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
-        price_change = st.number_input("New price", min_value=0.01)
-        if st.button("Apply Price Change"):
+
+        st.markdown("### 🎯 Manual Stock Controls")
+        col1, col2 = st.columns(2)
+        with col1:
+            ticker_to_change = st.selectbox("Stock to modify", base_tickers + ["TMF"])
+        with col2:
+            price_change = st.number_input("New Price", min_value=0.01)
+        if st.button("✅ Apply Price Change"):
             cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
             cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                            (str(st.session_state.sim_time), ticker_to_change, price_change))
             conn.commit()
             st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
+
         st.divider()
-        st.markdown("#### Advance Simulation")
-        if st.button("Advance 1 Hour"):
-            for _ in range(1): update_prices()
-        if st.button("Advance 1 Day"):
-            for _ in range(24): update_prices()
-        if st.button("Advance 1 Week"):
-            for _ in range(168): update_prices()
-        if st.button("Advance 1 Month"):
-            for _ in range(5040): update_prices()
-        if st.button("Advance 1 Year"):
-            for _ in range(60480): update_prices()
+        st.markdown("### ⏩ Advance Simulation Time")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Advance 1 Hour"):
+                update_prices()
+            if st.button("Advance 1 Day"):
+                for _ in range(24): update_prices()
+        with col2:
+            if st.button("Advance 1 Week"):
+                for _ in range(168): update_prices()
+            if st.button("Advance 1 Month"):
+                for _ in range(5040): update_prices()
+        with col3:
+            if st.button("Advance 1 Year"):
+                for _ in range(60480): update_prices()
+
         st.divider()
-        st.markdown("#### Stock-Specific Volatility")
+        st.markdown("### 📉 Adjust Stock Volatility")
         tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
-        selected_vol_ticker = st.selectbox("Select a stock to update volatility", tickers)
+        selected_vol_ticker = st.selectbox("Select Stock", tickers)
         current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
         new_vol = st.number_input("New Volatility", value=current_vol, key=f"vol_{selected_vol_ticker}")
-        if st.button("Apply Volatility Change"):
+        if st.button("📈 Apply Volatility Change"):
             cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
             conn.commit()
             st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
+
         st.divider()
-        st.markdown("#### Risk-Free Rate and Equity Premium")
-        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
-        st.session_state.risk_free_rate = new_rfr
-        new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
-        st.session_state.equity_risk_premium = new_erp
-        tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
+        st.markdown("### 🏦 Market Parameters")
+        col1, col2 = st.columns(2)
+        with col1:
+            new_rfr = st.number_input("Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
+            st.session_state.risk_free_rate = new_rfr
+        with col2:
+            new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
+            st.session_state.equity_risk_premium = new_erp
+
+        tick_rate = st.slider("⏱ Tick Interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
         st.session_state.tick_interval_sec = tick_rate
 
         st.divider()
-        st.markdown("#### Market Sentiment Drift")
-        selected_sentiment = st.selectbox("Set Market Sentiment", list(market_sentiment_options.keys()), index=1)
+        st.markdown("### 🌐 Market Sentiment")
+        selected_sentiment = st.selectbox("Set Sentiment", list(market_sentiment_options.keys()), index=1)
         st.session_state.market_sentiment = selected_sentiment
-
 
 if selected_ticker:
     hist = pd.read_sql("SELECT * FROM price_history WHERE Ticker = ? ORDER BY CAST(Timestamp AS INTEGER)", conn, params=(selected_ticker,))
