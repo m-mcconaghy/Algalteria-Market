@@ -97,7 +97,7 @@ def update_prices():
             continue
         theta = 0.04
         momentum = np.random.choice([1, -1], p=[0.52, 0.48])
-        regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
+        regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
         scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
         # Hybrid drift model with sentiment multiplier
@@ -116,7 +116,7 @@ def update_prices():
         
         drift_rate = (financial_drift * mult) / 24  # convert annual to hourly
 
-        drift = drift_rate * row["Price"]
+        drift = np.clip(drift_rate * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
         # Rare large shocks (2% chance)
         shock_chance = np.random.rand()
         shock_factor = 1.0
@@ -126,7 +126,8 @@ def update_prices():
             shock_factor = np.random.choice([0.7, 1.3], p=[0.5, 0.5])
         else:
             shock_factor = 1.0
-        new_price = max((row["Price"] + noise * row["Price"] + drift) * shock_factor, 0.01)
+        price = row["Price"] * shock_factor  # apply first
+        new_price = max(price + noise * price + drift, 0.01)
         if st.session_state.sim_time % 24 == 0:  # once per simulated day
             new_initial_price = row["InitialPrice"] * 1.0005  # ~0.05% daily growth
             cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?", (new_initial_price, row["Ticker"]))
@@ -168,9 +169,9 @@ selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
 
 # Admin controls
 market_sentiment_options = {
-    "Bubbling": 0.07,     # extra strong upward
-    "Booming": 0.03,      # moderately bullish
-    "Stagnant": 0.01,     # flat
+    "Bubbling": 0.03,     # extra strong upward
+    "Booming": 0.01,      # moderately bullish
+    "Stagnant": 0.00,     # flat
     "Receding": -0.02,    # downward trend
     "Depression": -0.05   # heavy bearish pressure
 }
