@@ -125,7 +125,7 @@ def update_prices(ticks=1):
             sentiment_multiplier = {
                 "Bubbling": 0.03,
                 "Booming": 0.01,
-                "Stagnant": 0.00,
+                "Stagnant": 0.0005,
                 "Receding": -0.02,
                 "Depression": -0.05
             }
