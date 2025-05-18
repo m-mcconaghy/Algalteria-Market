@@ -6,16 +6,16 @@ from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
+import os
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
 DATABASE_PATH = "market.db"
-conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
 # --- Database Connection ---
-conn = sqlite3.connect("market.db", check_same_thread=False)
+conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -90,6 +90,20 @@ if cursor.fetchone()[0] == 0:
 
 # --- Header and Market Status ---
 st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
+
+# --- Database Upload ---
+uploaded_file = st.file_uploader("Upload Database File", type=["db"])
+if uploaded_file is not None:
+    with open(DATABASE_PATH, "wb") as f:
+        f.write(uploaded_file.read())
+    st.success("Database file uploaded successfully! Please refresh the page to load the data.")
+    # Re-establish the database connection after upload
+    conn.close()
+    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+    cursor = conn.cursor()
+    # Clear session state to force reload (optional, but can prevent issues)
+    for key in st.session_state.keys():
+        del st.session_state[key]
 
 col_status, col_admin = st.columns([3, 1])
 with col_status:
@@ -188,6 +202,20 @@ if is_admin and st.session_state.running and count != st.session_state.last_refr
 if "last_update_time" in st.session_state:
     elapsed = int(time.time() - st.session_state.last_update_time)
     st.caption(f"⏱️ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
+
+# --- Download Button ---
+def download_database():
+    with open(DATABASE_PATH, "rb") as f:
+        db_bytes = f.read()
+    st.download_button(
+        label="💾 Download Current Database",
+        data=db_bytes,
+        file_name="market_data.db",
+        mime="application/octet-stream"
+    )
+
+download_database()
+st.markdown("---")
 
 # --- Display Stock Data ---
 st.markdown("### 📈 Current Stock Prices")
