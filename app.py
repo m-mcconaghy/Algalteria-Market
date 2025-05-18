@@ -119,13 +119,17 @@ def update_prices():
         drift = drift_rate * row["Price"]
         # Rare large shocks (2% chance)
         shock_chance = np.random.rand()
-        if shock_chance < 0.001:
-            shock_factor = np.random.choice([0.9, 1.1], p=[0.5, 0.5])  # 50% chance crash or surge
+        shock_factor = 1.0
+        if np.random.rand() < 0.001:  # 0.1% chance
+            shock_factor = np.random.choice([0.9, 1.1], p=[0.5, 0.5])
+        if np.random.rand() < 0.0001:  # rare extreme event
+            shock_factor = np.random.choice([0.7, 1.3], p=[0.5, 0.5])
         else:
             shock_factor = 1.0
         new_price = max((row["Price"] + noise * row["Price"] + drift) * shock_factor, 0.01)
-        growth_factor = 1 + ((st.session_state.risk_free_rate + st.session_state.equity_risk_premium) / (24 * 365))  # daily compounding approx
-        new_initial_price = row["InitialPrice"] * growth_factor
+        if st.session_state.sim_time % 24 == 0:  # once per simulated day
+            new_initial_price = row["InitialPrice"] * 1.0005  # ~0.05% daily growth
+            cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?", (new_initial_price, row["Ticker"]))
         df.at[idx, "Price"] = new_price
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                        (str(st.session_state.sim_time), row["Ticker"], new_price))
@@ -166,18 +170,9 @@ selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
 market_sentiment_options = {
     "Bubbling": 0.07,     # extra strong upward
     "Booming": 0.03,      # moderately bullish
-    "Stagnant": 0.00,     # flat
+    "Stagnant": 0.01,     # flat
     "Receding": -0.02,    # downward trend
     "Depression": -0.05   # heavy bearish pressure
-}
-
-# Admin controls
-market_sentiment_options = {
-    "Bubbling": 0.07,
-    "Booming": 0.03,
-    "Stagnant": 0.00,
-    "Receding": -0.02,
-    "Depression": -0.05
 }
 
 if is_admin:
