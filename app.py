@@ -41,7 +41,7 @@ if "sim_time" not in st.session_state:
     st.session_state.sim_time = 0
 
 if "tick_interval_sec" not in st.session_state:
-    st.session_state.tick_interval_sec = 60
+    st.session_state.tick_interval_sec = 150  # 2.5 minutes
 
 if "risk_free_rate" not in st.session_state:
     st.session_state.risk_free_rate = 0.075
@@ -68,11 +68,12 @@ if cursor.fetchone()[0] == 0:
             INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
             VALUES (?, ?, ?, ?, ?)
         """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-    tmf_price = sum(initial_prices) / len(initial_prices)
+    tmf_price = np.average(initial_prices, weights=volatility)
+    tmf_vol = np.average(volatility, weights=initial_prices)
     cursor.execute("""
         INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
         VALUES (?, ?, ?, ?, ?)
-    """, ("TMF", "Total Market Fund", tmf_price, 0.0, tmf_price))
+    """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
     conn.commit()
 
 st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
@@ -98,61 +99,21 @@ def update_prices():
         reversion = theta * (row["InitialPrice"] - row["Price"])
         momentum = np.random.choice([1, -1], p=[0.52, 0.48])
         regime_multiplier = np.random.choice([1, 2.5], p=[0.85, 0.15])
-        scaled_vol = row["Volatility"] * np.sqrt(1 / 360)
+        scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
-        drift_rate = (st.session_state.risk_free_rate + st.session_state.equity_risk_premium) / 360
+        drift_rate = (st.session_state.risk_free_rate + st.session_state.equity_risk_premium) / 24
         drift = drift_rate * row["Price"]
         new_price = max(row["Price"] + reversion + noise * row["Price"] + drift, 0.01)
         df.at[idx, "Price"] = new_price
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                        (str(st.session_state.sim_time), row["Ticker"], new_price))
-    df.loc[df["Ticker"] == "TMF", "Price"] = df[df["Ticker"] != "TMF"]["Price"].mean()
+    tmf_data = df[df["Ticker"] != "TMF"]
+    tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
+    df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
     for _, row in df.iterrows():
         cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
     conn.commit()
     st.session_state.sim_time += 1
-
-# Admin controls
-if is_admin:
-    with st.expander("⚙️ Admin Tools"):
-        ticker_to_change = st.selectbox("Select a stock to modify", base_tickers + ["TMF"])
-        price_change = st.number_input("New price", min_value=0.01)
-        if st.button("Apply Price Change"):
-            cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
-            cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
-                           (str(st.session_state.sim_time), ticker_to_change, price_change))
-            conn.commit()
-            st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
-        st.divider()
-        st.markdown("#### Advance Simulation")
-        if st.button("Advance 1 Hour"):
-            for _ in range(60): update_prices()
-        if st.button("Advance 1 Day"):
-            for _ in range(360): update_prices()
-        if st.button("Advance 1 Week"):
-            for _ in range(2520): update_prices()
-        if st.button("Advance 1 Month"):
-            for _ in range(7200): update_prices()
-        if st.button("Advance 1 Year"):
-            for _ in range(86400): update_prices()
-        st.divider()
-        st.markdown("#### Stock-Specific Volatility")
-        tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
-        selected_vol_ticker = st.selectbox("Select a stock to update volatility", tickers)
-        current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
-        new_vol = st.number_input("New Volatility", value=current_vol, key=f"vol_{selected_vol_ticker}")
-        if st.button("Apply Volatility Change"):
-            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
-            conn.commit()
-            st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
-        st.divider()
-        st.markdown("#### Risk-Free Rate and Equity Premium")
-        new_rfr = st.number_input("Annual Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
-        st.session_state.risk_free_rate = new_rfr
-        new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
-        st.session_state.equity_risk_premium = new_erp
-        tick_rate = st.slider("Tick interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
-        st.session_state.tick_interval_sec = tick_rate
 
 count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
@@ -178,18 +139,37 @@ st.dataframe(
 
 st.markdown("### 📊 Select a stock to view price history")
 selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
+
 if selected_ticker:
     hist = pd.read_sql("SELECT * FROM price_history WHERE Ticker = ? ORDER BY CAST(Timestamp AS INTEGER)", conn, params=(selected_ticker,))
     if not hist.empty:
         hist["SimTime"] = pd.to_numeric(hist["Timestamp"], errors="coerce").astype(int)
+        view_range = st.radio("Select timeframe:", ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"], horizontal=True)
+
+        if view_range == "1 Day":
+            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 24]
+        elif view_range == "1 Week":
+            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 168]
+        elif view_range == "1 Month":
+            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 720]
+        elif view_range == "3 Months":
+            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 2160]
+        elif view_range == "Year to Date":
+            hist = hist[hist["SimTime"] >= 0]  # Simplified for now
+        elif view_range == "1Y":
+            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 8640]
+        # else Alltime: no filter
+
         low, high = hist["Price"].min(), hist["Price"].max()
         padding = (high - low) * 0.1
+
         chart = alt.Chart(hist).mark_line().encode(
-            x=alt.X("SimTime:Q", axis=alt.Axis(title="Simulated Time (ticks)")),
+            x=alt.X("SimTime:Q", axis=alt.Axis(title="Simulated Time (ticks)"), scale=alt.Scale(nice=False)),
             y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
                    axis=alt.Axis(title="Price (cr)", grid=True)),
             tooltip=["SimTime", "Price"]
         ).properties(title=f"{selected_ticker} Price History", width="container", height=300).interactive()
+
         st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No price history available yet.")
