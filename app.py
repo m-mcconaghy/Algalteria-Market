@@ -119,8 +119,8 @@ def update_prices():
         drift = drift_rate * row["Price"]
         # Rare large shocks (2% chance)
         shock_chance = np.random.rand()
-        if shock_chance < 0.02:
-            shock_factor = np.random.choice([0.5, 1.5], p=[0.5, 0.5])  # 50% chance crash or surge
+        if shock_chance < 0.001:
+            shock_factor = np.random.choice([0.9, 1.1], p=[0.5, 0.5])  # 50% chance crash or surge
         else:
             shock_factor = 1.0
         new_price = max((row["Price"] + noise * row["Price"] + drift) * shock_factor, 0.01)
