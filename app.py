@@ -281,24 +281,29 @@ if selected_ticker:
 
         if view_range == "1 Day":
             hist = hist[hist["SimTime"] >= st.session_state.sim_time - 24]
-        elif view_range == "1 Week":
-            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 168]
-        elif view_range == "1 Month":
-            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 720]
-        elif view_range == "3 Months":
-            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 2160]
-        elif view_range == "Year to Date":
-            hist = hist[hist["SimTime"] >= 0]  # You can later refine with real YTD calc
-        elif view_range == "1Y":
-            hist = hist[hist["SimTime"] >= st.session_state.sim_time - 8640]
-        # Alltime: no filtering
+            # Show hourly resolution
+            x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
+        else:
+            if view_range == "1 Week":
+                hist = hist[hist["SimTime"] >= st.session_state.sim_time - 168]
+            elif view_range == "1 Month":
+                hist = hist[hist["SimTime"] >= st.session_state.sim_time - 720]
+            elif view_range == "3 Months":
+                hist = hist[hist["SimTime"] >= st.session_state.sim_time - 2160]
+            elif view_range == "Year to Date":
+                hist = hist[hist["SimTime"] >= 0]
+            elif view_range == "1Y":
+                hist = hist[hist["SimTime"] >= st.session_state.sim_time - 8640]
+            # For larger views, snap dates to day resolution
+            hist["Date"] = hist["Date"].dt.floor("D")
+            x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%Y-%m-%d"))
 
         # Build the chart
         low, high = hist["Price"].min(), hist["Price"].max()
         padding = (high - low) * 0.1
 
         chart = alt.Chart(hist).mark_line().encode(
-            x=alt.X("Date:T", axis=alt.Axis(title="Simulated Date")),
+            x=x_field,
             y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
                    axis=alt.Axis(title="Price (cr)", grid=True)),
             tooltip=["Date:T", "Price"]
@@ -308,4 +313,3 @@ if selected_ticker:
 
     else:
         st.info("No price history available yet.")
-
