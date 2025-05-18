@@ -112,14 +112,11 @@ def update_prices():
         if row["Ticker"] == "TMF":
             continue
 
+        # === Compute components first ===
         regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
         scaled_vol = row["Volatility"] * np.sqrt(1 / 24)
         momentum = np.random.choice([1, -1])
         noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
-        sim_timestamp = SIM_START_DATE + timedelta(hours=st.session_state.sim_time)
-        cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
-                       (sim_timestamp.isoformat(), row["Ticker"], new_price))
-
 
         financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
         sentiment_multiplier = {
@@ -134,28 +131,27 @@ def update_prices():
         drift_rate = (financial_drift * mult) / 24
         drift = np.clip(drift_rate * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
 
-                # --- everything above remains unchanged (noise, drift, etc.) ---
-        
         shock_factor = 1.0
         if np.random.rand() < 0.001:
             shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5])
-        
+
         base_price = row["Price"] * shock_factor
         new_price = base_price + noise * base_price + drift
-        
-        # Clamp price change
-        max_change = 0.02
-        min_price = row["Price"] * (1 - max_change)
-        max_price = row["Price"] * (1 + max_change)
-        new_price = float(np.clip(new_price, min_price, max_price))
+        new_price = float(np.clip(new_price, row["Price"] * 0.98, row["Price"] * 1.02))
         new_price = max(new_price, 0.01)
-        
-        # ✅ Now it’s safe to generate timestamp and insert into price history
+
+        # Update InitialPrice once per day
+        if st.session_state.sim_time % 24 == 0:
+            new_initial_price = row["InitialPrice"] * 1.0005
+            cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?", (new_initial_price, row["Ticker"]))
+
+        # Save new price
+        df.at[idx, "Price"] = new_price
         sim_timestamp = SIM_START_DATE + timedelta(hours=st.session_state.sim_time)
         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
                        (sim_timestamp.isoformat(), row["Ticker"], new_price))
 
-
+    # Update TMF based on weighted average
     tmf_data = df[df["Ticker"] != "TMF"]
     tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
     df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
@@ -165,6 +161,7 @@ def update_prices():
 
     conn.commit()
     st.session_state.sim_time += 1
+
     
 count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
 if "last_refresh_count" not in st.session_state:
