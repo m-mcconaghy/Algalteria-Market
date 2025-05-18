@@ -282,7 +282,12 @@ if selected_ticker:
         if view_range == "1 Day":
             hist = hist[hist["SimTime"] >= st.session_state.sim_time - 24]
             # Show hourly resolution
-            x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
+            if view_range == "1 Day":
+                x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
+            else:
+                hist["Date"] = hist["Date"].dt.floor("D")
+                x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))  # e.g. 'May 18'
+
         else:
             if view_range == "1 Week":
                 hist = hist[hist["SimTime"] >= st.session_state.sim_time - 168]
@@ -296,7 +301,12 @@ if selected_ticker:
                 hist = hist[hist["SimTime"] >= st.session_state.sim_time - 8640]
             # For larger views, snap dates to day resolution
             hist["Date"] = hist["Date"].dt.floor("D")
-            x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%Y-%m-%d"))
+            if view_range == "1 Day":
+                x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
+            else:
+                hist["Date"] = hist["Date"].dt.floor("D")
+                x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))  # e.g. 'May 18'
+
 
         # Build the chart
         low, high = hist["Price"].min(), hist["Price"].max()
