@@ -66,9 +66,9 @@ if "market_sentiment" not in st.session_state:
     st.session_state.market_sentiment = "Booming"
 
 
-# --- Database Upload (Visible Only to Admin) ---
+# --- Admin Tools (Visible Only to Admin) ---
 if is_admin:
-    with st.expander("🔧 Admin Panel"):
+    with st.expander("🔧 Admin Panel", expanded=True):
         st.subheader("Upload New Database")
         uploaded_file = st.file_uploader("Upload Database File", type=["db"])
         if uploaded_file is not None:
@@ -81,19 +81,19 @@ if is_admin:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
 
-if is_admin:
-    st.subheader("Admin: Download Current Database")
-    def download_database():
-        with open(DATABASE_PATH, "rb") as f:
-            db_bytes = f.read()
-        st.download_button(
-            label="💾 Download Current Database",
-            data=db_bytes,
-            file_name="market_data.db",
-            mime="application/octet-stream"
-        )
+        st.subheader("Download Current Database")
+        def download_database():
+            with open(DATABASE_PATH, "rb") as f:
+                db_bytes = f.read()
+            st.download_button(
+                label="💾 Download Current Database",
+                data=db_bytes,
+                file_name="market_data.db",
+                mime="application/octet-stream"
+            )
 
-    download_database()
+        download_database()
+
 
 
 # --- Header and Market Status ---
