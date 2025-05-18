@@ -79,7 +79,7 @@ if cursor.fetchone()[0] == 0:
             INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
             VALUES (?, ?, ?, ?, ?)
         """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-    tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
+    tmf_price = np.average(initial_prices, weights=initial_prices)
     tmf_vol = np.average(volatility, weights=initial_prices)
     cursor.execute("""
         INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
