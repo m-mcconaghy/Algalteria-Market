@@ -98,15 +98,16 @@ with col_admin:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
 
 # --- Download Button ---
-def download_database():
-    with open(DATABASE_PATH, "rb") as f:
-        db_bytes = f.read()
-    st.download_button(
-        label="💾 Download Current Database",
-        data=db_bytes,
-        file_name="market_data.db",
-        mime="application/octet-stream"
-    )
+if is_admin:
+    def download_database():
+        with open(DATABASE_PATH, "rb") as f:
+            db_bytes = f.read()
+        st.download_button(
+            label="💾 Download Current Database",
+            data=db_bytes,
+            file_name="market_data.db",
+            mime="application/octet-stream"
+        )
 
 download_database()
 st.markdown("---")
