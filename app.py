@@ -154,15 +154,15 @@ if is_admin:
         st.divider()
         st.markdown("#### Advance Simulation")
         if st.button("Advance 1 Hour"):
-            for _ in range(60): update_prices()
+            for _ in range(1): update_prices()
         if st.button("Advance 1 Day"):
-            for _ in range(360): update_prices()
+            for _ in range(24): update_prices()
         if st.button("Advance 1 Week"):
-            for _ in range(2520): update_prices()
+            for _ in range(168): update_prices()
         if st.button("Advance 1 Month"):
-            for _ in range(7200): update_prices()
+            for _ in range(5040): update_prices()
         if st.button("Advance 1 Year"):
-            for _ in range(86400): update_prices()
+            for _ in range(60480): update_prices()
         st.divider()
         st.markdown("#### Stock-Specific Volatility")
         tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
