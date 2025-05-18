@@ -235,22 +235,22 @@ if selected_ticker:
             x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
         elif view_range == "3 Months":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 2160]
-            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("W")
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Week", axis=alt.Axis(format="%b %d"))
         elif view_range == "Year to Date":
             hist_filtered = hist[hist["Date"].dt.year == SIM_START_DATE.year]
-            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("M")
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Month", axis=alt.Axis(format="%b"))
         elif view_range == "1Y":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 8760]
-            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("M")
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Month", axis=alt.Axis(format="%b"))
         else:  # Alltime
             hist_filtered = hist
-            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("Y")
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Year", axis=alt.Axis(format="%Y"))
 
