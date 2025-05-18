@@ -65,37 +65,6 @@ if "market_conditions" not in st.session_state:
 if "market_sentiment" not in st.session_state:
     st.session_state.market_sentiment = "Booming"
 
-
-# --- Admin Tools (Visible Only to Admin) ---
-if is_admin:
-    with st.expander("🔧 Admin Panel", expanded=True):
-        st.subheader("Upload New Database")
-        uploaded_file = st.file_uploader("Upload Database File", type=["db"])
-        if uploaded_file is not None:
-            with open(DATABASE_PATH, "wb") as f:
-                f.write(uploaded_file.read())
-            st.success("Database file uploaded successfully! Please refresh the page to load the data.")
-            conn.close()
-            conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
-            cursor = conn.cursor()
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-
-        st.subheader("Download Current Database")
-        def download_database():
-            with open(DATABASE_PATH, "rb") as f:
-                db_bytes = f.read()
-            st.download_button(
-                label="💾 Download Current Database",
-                data=db_bytes,
-                file_name="market_data.db",
-                mime="application/octet-stream"
-            )
-
-        download_database()
-
-
-
 # --- Header and Market Status ---
 st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
 
