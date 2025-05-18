@@ -304,20 +304,21 @@ if selected_ticker:
 if is_admin:
     st.sidebar.header("⚙️ Admin Tools")
     
-with st.sidebar.expander("Database Upload"):
-    uploaded_file = st.file_uploader("Upload Database File", type=["db"])
-    if uploaded_file is not None:
-        with open(DATABASE_PATH, "wb") as f:
-            f.write(uploaded_file.read())
-        st.success("Database file uploaded successfully! Please refresh the page to load the data.")
-        # Re-establish the database connection after upload
-        conn.close()
-        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
-        cursor = conn.cursor()
-        # Clear session state to force reload (optional, but can prevent issues)
-        for key in st.session_state.keys():
-            del st.session_state[key]
+    with st.sidebar.expander("Database Upload"):
+        uploaded_file = st.file_uploader("Upload Database File", type=["db"])
+        if uploaded_file is not None:
+            with open(DATABASE_PATH, "wb") as f:
+                f.write(uploaded_file.read())
+            st.success("Database file uploaded successfully! Please refresh the page to load the data.")
+            # Re-establish the database connection after upload
+            conn.close()
+            conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+            cursor = conn.cursor()
+            # Clear session state to force reload (optional, but can prevent issues)
+            for key in st.session_state.keys():
+                del st.session_state[key]
     
+    st.sidebar.divider()
     with st.sidebar.expander("🎯 Manual Stock Controls"):
         st.markdown("##### Modify Stock Price")
         col_manual1, col_manual2 = st.columns(2)
