@@ -14,25 +14,77 @@ DATABASE_PATH = "market.db"
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-# --- Admin Password ---
-admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
-is_admin = st.text_input("Enter admin password", type="password") == admin_password
-
-# --- Database Connection (Initialize outside the admin block) ---
+# --- Database Connection ---
 conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
-# --- Functions ---
-def download_database():
-    with open(DATABASE_PATH, "rb") as f:
-        db_bytes = f.read()
-    st.download_button(
-        label="💾 Download Current Database",
-        data=db_bytes,
-        file_name="market_data.db",
-        mime="application/octet-stream"
-    )
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS stocks (
+    Ticker TEXT PRIMARY KEY,
+    Name TEXT,
+    Price REAL,
+    Volatility REAL,
+    InitialPrice REAL,
+    DriftMultiplier REAL DEFAULT 1.0  -- Added drift multiplier
+)
+""")
+cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker TEXT, Price REAL)")
+cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
+conn.commit()
 
+
+# --- Admin Password and Mode ---
+admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
+is_admin = st.text_input("Enter admin password", type="password") == admin_password
+
+# --- Market State Initialization ---
+if "running" not in st.session_state:
+    try:
+        cursor.execute("SELECT value FROM market_status WHERE key='running'")
+        row = cursor.fetchone()
+        st.session_state.running = row and row[0] == "True"
+    except Exception as e:
+        st.error(f"Error loading market status: {e}")
+        st.session_state.running = True
+
+if "sim_time" not in st.session_state:
+    st.session_state.sim_time = 0
+
+if "tick_interval_sec" not in st.session_state:
+    st.session_state.tick_interval_sec = 150  # 2.5 minutes
+
+if "risk_free_rate" not in st.session_state:
+    st.session_state.risk_free_rate = 0.075
+
+if "equity_risk_premium" not in st.session_state:
+    st.session_state.equity_risk_premium = 0.02
+
+if "market_conditions" not in st.session_state:
+    st.session_state.market_conditions = "Normal"
+
+if "market_sentiment" not in st.session_state:
+    st.session_state.market_sentiment = "Booming"
+
+# --- Header and Market Status ---
+st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
+
+col_status, col_admin = st.columns([3, 1])
+with col_status:
+    st.markdown(f"### \U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
+with col_admin:
+    if is_admin:
+        st.success("\U0001F9D1‍\U0001F680 Admin Mode")
+        if st.button("⏯ Pause / Resume Market"):
+            st.session_state.running = not st.session_state.running
+            cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
+            conn.commit()
+    else:
+        st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
+
+# --- Set the TIME ---
+SIM_START_DATE = pd.Timestamp("2200-01-01")
+
+# --- Final update_prices function ---
 def update_prices(ticks=1):
     for _ in range(ticks):
         df = pd.read_sql("SELECT * FROM stocks", conn)
@@ -101,175 +153,77 @@ def update_prices(ticks=1):
         conn.commit()
         st.session_state.sim_time += 1
 
-# --- Main App ---
-st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
+# --- Auto-refresh and Price Updates ---
+count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
+if "last_refresh_count" not in st.session_state:
+    st.session_state.last_refresh_count = -1
+if is_admin and st.session_state.running and count != st.session_state.last_refresh_count:
+    update_prices()
+    st.session_state.last_update_time = time.time()
+    st.session_state.last_refresh_count = count
 
-if is_admin:
-    # --- Database Initialization (Run only if admin) ---
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS stocks (
-        Ticker TEXT PRIMARY KEY,
-        Name TEXT,
-        Price REAL,
-        Volatility REAL,
-        InitialPrice REAL,
-        DriftMultiplier REAL DEFAULT 1.0  -- Added drift multiplier
-    )
-    """)
-    cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker TEXT, Price REAL)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
-    conn.commit()
+if "last_update_time" in st.session_state:
+    elapsed = int(time.time() - st.session_state.last_update_time)
+    st.caption(f"⏱️ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
 
-    # --- Market State Initialization (Run only if admin) ---
-    if "running" not in st.session_state:
-        try:
-            cursor.execute("SELECT value FROM market_status WHERE key='running'")
-            row = cursor.fetchone()
-            st.session_state.running = row and row[0] == "True"
-        except Exception as e:
-            st.error(f"Error loading market status: {e}")
-            st.session_state.running = True
+# --- Display Stock Data ---
+st.markdown("### 📈 Current Stock Prices")
+stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
+stocks_df["$ Change"] = stocks_df["Price"] - stocks_df["InitialPrice"]
+stocks_df["% Change"] = (stocks_df["$ Change"] / stocks_df["InitialPrice"]) * 100
+stocks_df = stocks_df.sort_values("Ticker").reset_index(drop=True)
 
-    if "sim_time" not in st.session_state:
-        st.session_state.sim_time = 0
+st.dataframe(
+    stocks_df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]]
+    .style.format({
+        "Price": "{:.2f}",
+        "Volatility": "{:.3f}",
+        "$ Change": "+{:.2f}" if stocks_df["$ Change"].iloc[0] >= 0 else "{:.2f}",
+        "% Change": "+{:.2f}%" if stocks_df["% Change"].iloc[0] >= 0 else "{:.2f}%"
+    }),
+    use_container_width=True,
+    height=400  # Adjusted height
+)
 
-    if "tick_interval_sec" not in st.session_state:
-        st.session_state.tick_interval_sec = 150  # 2.5 minutes
+# --- Stock Price History ---
+st.markdown("### 📊 Stock Price History")
+selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
 
-    if "risk_free_rate" not in st.session_state:
-        st.session_state.risk_free_rate = 0.075
-
-    if "equity_risk_premium" not in st.session_state:
-        st.session_state.equity_risk_premium = 0.02
-
-    if "market_conditions" not in st.session_state:
-        st.session_state.market_conditions = "Normal"
-
-    if "market_sentiment" not in st.session_state:
-        st.session_state.market_sentiment = "Booming"
-
-    # --- Initial Stock Data (Run only if admin and table is empty) ---
-    cursor.execute("SELECT COUNT(*) FROM stocks")
-    if cursor.fetchone()[0] == 0:
-        base_tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "NEC", "ARC", "SOL", "AWE", "ORB", "QNT", "AGX", "LCO", "FMC", "SYX", "VLT", "EXR", "CRB"]
-        names = ["Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund", "The Textile Team", "Galactic Farmers Union", "Imperial Weapons Industry", "Epsilon Exchange", "Nebular Energy Consortium", "Asteroid Resources Collective", "Solar Operations League", "Algalterian Water Exchange", "Orbital Rare Biotech", "Quantum Nexus Trust", "Agricultural Exports Guild", "Lunar Construction Outfit", "Frontier Medical Consortium", "Syphonix Energy Systems", "Veltrax AI Logistics", "Exorium Rare Elements", "Crystalline Banking Network"]
-        initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0, 91.0, 87.5, 102.0, 78.0, 113.0, 139.0, 84.0, 62.0, 144.0, 193.0, 119.0, 221.0, 68.0]
-        volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018, 0.025, 0.02, 0.015, 0.045, 0.03, 0.017, 0.023, 0.014, 0.055, 0.027, 0.06, 0.018]
-        for i in range(len(base_tickers)):
-            cursor.execute("""
-                INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                VALUES (?, ?, ?, ?, ?)
-            """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-        tmf_price = np.average(initial_prices, weights=initial_prices)
-        tmf_vol = np.average(volatility, weights=initial_prices)
-        cursor.execute("""
-            INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-            VALUES (?, ?, ?, ?, ?)
-        """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
-        conn.commit()
-
-    # --- Database Upload (Only for admin) ---
-    uploaded_file = st.file_uploader("Upload Database File", type=["db"])
-    if uploaded_file is not None:
-        with open(DATABASE_PATH, "wb") as f:
-            f.write(uploaded_file.read())
-        st.success("Database file uploaded successfully! Please refresh the page to load the data.")
-        # Re-establish the database connection after upload
-        conn.close()
-        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
-        cursor = conn.cursor()
-        # Clear session state to force reload (optional, but can prevent issues)
-        for key in st.session_state.keys():
-            del st.session_state[key]
-
-    col_status, col_admin = st.columns([3, 1])
-    with col_status:
-        st.markdown(f"### \U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
-    with col_admin:
-        st.success("\U0001F9D1‍\U0001F680 Admin Mode")
-        if st.button("⏯ Pause / Resume Market"):
-            st.session_state.running = not st.session_state.running
-            cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
-            conn.commit()
-
-    # --- Download Button (Only for admin) ---
-    download_database()
-    st.markdown("---")
-
-    # --- Set the TIME ---
-    SIM_START_DATE = pd.Timestamp("2200-01-01")
-
-    # --- Auto-refresh and Price Updates (Only for admin and if running) ---
-    count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
-    if "last_refresh_count" not in st.session_state:
-        st.session_state.last_refresh_count = -1
-    if st.session_state.running and count != st.session_state.last_refresh_count:
-        update_prices()
-        st.session_state.last_update_time = time.time()
-        st.session_state.last_refresh_count = count
-
-    if "last_update_time" in st.session_state:
-        elapsed = int(time.time() - st.session_state.last_update_time)
-        st.caption(f"⏱️ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
-
-    # --- Display Stock Data (Only for admin) ---
-    st.markdown("### 📈 Current Stock Prices")
-    stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
-    stocks_df["$ Change"] = stocks_df["Price"] - stocks_df["InitialPrice"]
-    stocks_df["% Change"] = (stocks_df["$ Change"] / stocks_df["InitialPrice"]) * 100
-    stocks_df = stocks_df.sort_values("Ticker").reset_index(drop=True)
-
-    st.dataframe(
-        stocks_df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]]
-        .style.format({
-            "Price": "{:.2f}",
-            "Volatility": "{:.3f}",
-            "$ Change": "+{:.2f}" if stocks_df["$ Change"].iloc[0] >= 0 else "{:.2f}",
-            "% Change": "+{:.2f}%" if stocks_df["% Change"].iloc[0] >= 0 else "{:.2f}%"
-        }),
-        use_container_width=True,
-        height=400  # Adjusted height
+if selected_ticker:
+    hist = pd.read_sql(
+        "SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
+        conn,
+        params=(selected_ticker,)
     )
 
-    # --- Stock Price History (Only for admin) ---
-    st.markdown("### 📊 Stock Price History")
-    selected_ticker = st.selectbox("Choose a stock", stocks_df["Ticker"])
+    if not hist.empty:
+        hist["Date"] = pd.to_datetime(hist["Timestamp"], errors="coerce")
+        hist["SimTime"] = (hist["Date"] - SIM_START_DATE).dt.total_seconds() // 3600
 
-    if selected_ticker:
-        hist = pd.read_sql(
-            "SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
-            conn,
-            params=(selected_ticker,)
+        view_range = st.radio(
+            "Select timeframe:",
+            ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"],
+            horizontal=True
         )
 
-        if not hist.empty:
-            hist["Date"] = pd.to_datetime(hist["Timestamp"], errors="coerce")
-            hist["SimTime"] = (hist["Date"] - SIM_START_DATE).dt.total_seconds() // 3600
+        now_sim_hours = st.session_state.sim_time * (24 / TICKS_PER_DAY)
 
-            view_range = st.radio(
-                "Select timeframe:",
-                ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"],
-                horizontal=True
-            )
-
-            now_sim_hours = st.session_state.sim_time * (24 / TICKS_PER_DAY)
-
-            if view_range == "1 Day":
-                hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 24]
-                x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
-            elif view_range == "1 Week":
-                hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 168]
-                hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
-                hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
-                x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
-            elif view_range == "1 Month":
-                hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 720]
-                hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
-                hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
-                x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
-            elif view_range == "3 Months":
-                hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 2160]
-                hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
+        if view_range == "1 Day":
+            hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 24]
+            x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
+        elif view_range == "1 Week":
+            hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 168]
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
+            hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
+            x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
+        elif view_range == "1 Month":
+            hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 720]
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
+            hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
+            x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
+        elif view_range == "3 Months":
+            hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 2160]
+            hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Week", axis=alt.Axis(format="%b %d"))
         elif view_range == "Year to Date":
