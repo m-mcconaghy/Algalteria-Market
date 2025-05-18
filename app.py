@@ -38,14 +38,15 @@ admin_password = st.secrets.get("ADMIN_PASSWORD", "secret123")
 is_admin = st.text_input("Enter admin password", type="password") == admin_password
 
 # --- Market State Initialization ---
-if "running" not in st.session_state:
-    try:
-        cursor.execute("SELECT value FROM market_status WHERE key='running'")
-        row = cursor.fetchone()
-        st.session_state.running = row and row[0] == "True"
-    except Exception as e:
-        st.error(f"Error loading market status: {e}")
-        st.session_state.running = True
+try:
+    cursor.execute("SELECT value FROM market_status WHERE key='running'")
+    row = cursor.fetchone()
+    market_running = row and row[0] == "True"
+except:
+    market_running = True  # fallback default
+
+st.session_state.running = market_running
+
 
 if "sim_time" not in st.session_state:
     st.session_state.sim_time = 0
@@ -96,11 +97,13 @@ with col_status:
     st.markdown(f"### \U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
 with col_admin:
     if is_admin:
-        st.success("\U0001F9D1‍\U0001F680 Admin Mode")
-        if st.button("⏯ Pause / Resume Market"):
-            st.session_state.running = not st.session_state.running
-            cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(st.session_state.running)))
-            conn.commit()
+    st.success("\U0001F9D1‍\U0001F680 Admin Mode")
+    if st.button("⏯ Pause / Resume Market"):
+        new_state = not st.session_state.running
+        cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(new_state)))
+        conn.commit()
+        st.session_state.running = new_state
+
     else:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
 
