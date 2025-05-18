@@ -81,8 +81,19 @@ if is_admin:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
 
-        st.subheader("Download Current Database")
-        download_database()
+if is_admin:
+    st.subheader("Admin: Download Current Database")
+    def download_database():
+        with open(DATABASE_PATH, "rb") as f:
+            db_bytes = f.read()
+        st.download_button(
+            label="💾 Download Current Database",
+            data=db_bytes,
+            file_name="market_data.db",
+            mime="application/octet-stream"
+        )
+
+    download_database()
 
 
 # --- Header and Market Status ---
