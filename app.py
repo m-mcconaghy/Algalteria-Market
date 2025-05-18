@@ -94,18 +94,27 @@ st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
 
 col_status, col_admin = st.columns([3, 1])
 with col_status:
-    st.markdown(f"### \U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
+    st.markdown(
+        f"### \U0001F4C8 Market Status: "
+        f"{'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}",
+        unsafe_allow_html=True
+    )
+
 with col_admin:
     if is_admin:
-    st.success("\U0001F9D1‍\U0001F680 Admin Mode")
+        st.success("\U0001F9D1‍\U0001F680 Admin Mode")
 
-    if st.button("⏯ Pause / Resume Market"):
-        new_state = not st.session_state.running
-        cursor.execute("REPLACE INTO market_status (key, value) VALUES (?, ?)", ("running", str(new_state)))
-        conn.commit()
-        st.session_state.running = new_state
-else:
-    st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
+        if st.button("⏯ Pause / Resume Market"):
+            new_state = not st.session_state.running
+            cursor.execute(
+                "REPLACE INTO market_status (key, value) VALUES (?, ?)",
+                ("running", str(new_state))
+            )
+            conn.commit()
+            st.session_state.running = new_state
+    else:
+        st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
+
 
 # --- Set the TIME ---
 SIM_START_DATE = pd.Timestamp("2200-01-01")
