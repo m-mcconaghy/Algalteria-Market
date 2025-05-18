@@ -47,7 +47,7 @@ if "risk_free_rate" not in st.session_state:
     st.session_state.risk_free_rate = 0.075
 
 if "equity_risk_premium" not in st.session_state:
-    st.session_state.equity_risk_premium = 0.05
+    st.session_state.equity_risk_premium = 0.02
 
 if "market_conditions" not in st.session_state:
     st.session_state.market_conditions = "Normal"
