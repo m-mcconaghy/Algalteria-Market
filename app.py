@@ -56,20 +56,27 @@ if "market_conditions" not in st.session_state:
 # Initial setup
 base_tickers = [
     "DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE",
-    "NEC", "ARC", "SOL", "AWE", "ORB", "QNT", "AGX"
+    "NEC", "ARC", "SOL", "AWE", "ORB", "QNT", "AGX",
+    "LCO", "FMC", "SYX", "VLT", "EXR", "CRB"
 ]
 names = [
     "Directorate Tech Fund", "Galactic Mining Guild", "Universal Services Fund",
     "The Textile Team", "Galactic Farmers Union", "Imperial Weapons Industry", "Epsilon Exchange",
     "Nebular Energy Consortium", "Asteroid Resources Collective", "Solar Operations League",
-    "Algalterian Water Exchange", "Orbital Rare Biotech", "Quantum Nexus Trust", "Agricultural Exports Guild"
+    "Algalterian Water Exchange", "Orbital Rare Biotech", "Quantum Nexus Trust", "Agricultural Exports Guild",
+    "Lunar Construction Outfit", "Frontier Medical Consortium", "Syphonix Energy Systems",
+    "Veltrax AI Logistics", "Exorium Rare Elements", "Crystalline Banking Network"
 ]
-
-initial_prices = [105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0,
-                  91.0, 87.5, 102.0, 78.0, 113.0, 139.0, 84.0]
-
-volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06,
-              0.018, 0.025, 0.02, 0.015, 0.045, 0.03, 0.017]
+initial_prices = [
+    105.0, 95.0, 87.5, 76.0, 82.0, 132.0, 151.0,
+    91.0, 87.5, 102.0, 78.0, 113.0, 139.0, 84.0,
+    62.0, 144.0, 193.0, 119.0, 221.0, 68.0
+]
+volatility = [
+    0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06,
+    0.018, 0.025, 0.02, 0.015, 0.045, 0.03, 0.017,
+    0.023, 0.014, 0.055, 0.027, 0.06, 0.018
+]
 
 
 cursor.execute("SELECT COUNT(*) FROM stocks")
