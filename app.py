@@ -337,7 +337,7 @@ if is_admin:
         drift_tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
         selected_drift_ticker = st.selectbox("Select Stock to Adjust Drift", drift_tickers)
         current_drift = pd.read_sql("SELECT DriftMultiplier FROM stocks WHERE Ticker = ?", conn, params=(selected_drift_ticker,)).iloc[0, 0]
-        new_drift = st.number_input("Drift Multiplier", value=current_drift, step=0.01, format="%.2f", key=f"drift_{selected_drift_ticker}")
+        new_drift = st.number_input("Drift Multiplier (Dependant on Market Sentiment)", value=current_drift, step=0.01, format="%.2f", key=f"drift_{selected_drift_ticker}")
         if st.button("✅ Apply Drift Change"):
             cursor.execute("UPDATE stocks SET DriftMultiplier = ? WHERE Ticker = ?", (new_drift, selected_drift_ticker))
             conn.commit()
