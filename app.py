@@ -210,8 +210,7 @@ if selected_ticker:
             y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
                    axis=alt.Axis(title="Price (cr)", grid=True)),
             tooltip=["SimTime", "Price"]
-        ).properties(title=f"{selected_ticker} Price History", width="container", height=300).interactive()
-
+        ).properties(title=f"{selected_ticker} Price History", width="container", height=300)
         st.altair_chart(chart, use_container_width=True)
     else:
         st.info("No price history available yet.")
