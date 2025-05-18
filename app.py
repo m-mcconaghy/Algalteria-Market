@@ -87,7 +87,7 @@ st.title("\U0001F30C Algalteria Galactic Exchange (AGE)")
 
 col_status, col_admin = st.columns([3, 1])
 with col_status:
-    st.subheader(f"\U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
+    st.markdown(f"### \U0001F4C8 Market Status: {'<span style=\"color: green;\">🟢 RUNNING</span>' if st.session_state.running else '<span style=\"color: red;\">🔴 PAUSED</span>'}", unsafe_allow_html=True)
 with col_admin:
     if is_admin:
         st.success("\U0001F9D1‍\U0001F680 Admin Mode")
