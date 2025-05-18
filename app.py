@@ -71,6 +71,33 @@ def initialize_database():
 
 initialize_database()  # Call at the beginning
 
+# --- Load market running state from database ---
+def load_market_status():
+    """Load market running status from database."""
+    conn = get_connection()
+    if conn is None:
+        return True  # Default to running if can't connect
+
+    cursor = get_cursor(conn)
+    if cursor is None:
+        conn.close()
+        return True
+
+    try:
+        cursor.execute("SELECT value FROM market_status WHERE key = 'running'")
+        result = cursor.fetchone()
+        if result:
+            return result[0].lower() == 'true'
+        else:
+            return True  # Default to running if no record exists
+    except Exception as e:
+        st.error(f"Error loading market status: {e}")
+        return True
+    finally:
+        cursor.close()
+        conn.close()
+
+
 # --- Session State Initialization ---
 if "sim_time" not in st.session_state:
     st.session_state.sim_time = 0
@@ -90,8 +117,9 @@ if "market_conditions" not in st.session_state:
 if "market_sentiment" not in st.session_state:
     st.session_state.market_sentiment = "Booming"
 
+# Load market running state from database instead of setting a default
 if "market_running" not in st.session_state:
-    st.session_state.market_running = True
+    st.session_state.market_running = load_market_status()
 
 # --- Initial Stock Data ---
 base_tickers = ["DTF", "GMG", "USF", "TTT", "GFU", "IWI", "EE", "NEC", "ARC", "SOL", "AWE", "ORB", "QNT", "AGX", "LCO", "FMC", "SYX", "VLT", "EXR", "CRB"]
@@ -159,7 +187,10 @@ with col_admin:
         st.success("\U0001F9D1‍\U0001F680 Admin Mode")
 
         if st.button("⏯ Pause / Resume Market"):
+            # Toggle the market running state
             st.session_state.market_running = not st.session_state.market_running
+            
+            # Save to database
             conn = get_connection()
             if conn:
                 cursor = get_cursor(conn)
@@ -170,12 +201,14 @@ with col_admin:
                             ("running", str(st.session_state.market_running))
                         )
                         conn.commit()
+                        st.success(f"Market {'resumed' if st.session_state.market_running else 'paused'}")
                     except Exception as e:
                         st.error(f"Error updating market status: {e}")
                         conn.rollback()
                     finally:
                         cursor.close()
                 conn.close()
+            st.rerun()  # Force a rerun to update the display immediately
     else:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
 
@@ -274,20 +307,34 @@ def update_prices(ticks=1):
         conn.close()
 
 
-
 # --- Auto-refresh and Price Updates ---
-count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
+# Only run auto-refresh if market is running
+if st.session_state.market_running:
+    count = st_autorefresh(interval=st.session_state.tick_interval_sec * 1000, key="market_tick")
+else:
+    count = 0  # Set count to 0 when market is paused
+
 if "last_refresh_count" not in st.session_state:
     st.session_state.last_refresh_count = -1
 
-if is_admin and st.session_state.market_running and count != st.session_state.last_refresh_count:
+# Only update prices if admin is logged in, market is running, AND we have a new refresh count
+if is_admin and st.session_state.market_running and count != st.session_state.last_refresh_count and count > 0:
     update_prices()
     st.session_state.last_update_time = time.time()
     st.session_state.last_refresh_count = count
 
+# Display timing information
 if "last_update_time" in st.session_state:
     elapsed = int(time.time() - st.session_state.last_update_time)
-    st.caption(f"⏱️ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
+    if st.session_state.market_running:
+        st.caption(f"⏱️ Last update: {elapsed}s ago — Next in: {max(0, st.session_state.tick_interval_sec - elapsed)}s")
+    else:
+        st.caption(f"⏸️ Market paused — Last update: {elapsed}s ago")
+else:
+    if st.session_state.market_running:
+        st.caption("⏱️ Waiting for first update...")
+    else:
+        st.caption("⏸️ Market paused")
 
 
 # --- Download Button ---
