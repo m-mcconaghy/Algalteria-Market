@@ -125,7 +125,7 @@ def update_prices(ticks=1):
             sentiment_multiplier = {
                 "Bubbling": 0.03,
                 "Booming": 0.01,
-                "Stagnant": 0.0005,
+                "Stagnant": 0.00,
                 "Receding": -0.02,
                 "Depression": -0.05
             }
@@ -135,6 +135,10 @@ def update_prices(ticks=1):
             drift_rate = (financial_drift * mult * row["DriftMultiplier"]) / 24
             drift = np.clip(drift_rate * tick_scale * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
 
+            # Mean reversion component
+            mean_reversion_strength = 0.01  # Adjust this strength as needed
+            mean_reversion = mean_reversion_strength * (row["InitialPrice"] - row["Price"])
+
             # Optional: adjust shock chance for tick scale (roughly per day chance = 0.1%)
             daily_shock_chance = 0.001
             shock_chance = 1 - (1 - daily_shock_chance) ** (tick_scale / 24)
@@ -143,7 +147,7 @@ def update_prices(ticks=1):
                 shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5])
 
             base_price = row["Price"] * shock_factor
-            new_price = base_price + noise * base_price + drift
+            new_price = base_price + noise * base_price + drift + mean_reversion #Added mean reversion
             limit = 0.01  # 1% per tick
             new_price = float(np.clip(new_price, row["Price"] * (1 - limit), row["Price"] * (1 + limit)))
             new_price = max(new_price, 0.01)
