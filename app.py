@@ -260,4 +260,88 @@ if selected_ticker:
 
             chart = alt.Chart(hist_filtered).mark_line(color="steelblue", size=2).encode(
                 x=x_field,
-                y=alt.Y("Price:Q", scale=alt.Scale(
+                y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
+                            axis=alt.Axis(title="Price (cr)", grid=True)),
+                tooltip=["Date:T", "Price:Q"]
+            ).properties(
+                title=f"{selected_ticker} Price History",
+                width="container",
+                height=300
+            ).interactive() # Added interactivity for zoom/pan
+
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No price history available for the selected timeframe.")
+    else:
+        st.info("No price history available yet for this stock.")
+
+# --- Admin Controls ---
+if is_admin:
+    st.sidebar.header("⚙️ Admin Tools")
+
+    with st.sidebar.expander("🎯 Manual Stock Controls"):
+        st.markdown("##### Modify Stock Price")
+        col_manual1, col_manual2 = st.columns(2)
+        with col_manual1:
+            ticker_to_change = st.selectbox("Stock to modify", base_tickers + ["TMF"])
+        with col_manual2:
+            price_change = st.number_input("New Price", min_value=0.01)
+        if st.button("✅ Apply Price Change"):
+            cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
+            sim_timestamp_now = SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
+            cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+                           (sim_timestamp_now.isoformat(), ticker_to_change, price_change))
+            conn.commit()
+            st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
+
+    st.sidebar.divider()
+    with st.sidebar.expander("⏩ Advance Simulation Time"):
+        st.markdown("##### Step Forward")
+        col_advance1, col_advance2 = st.columns(2)
+        with col_advance1:
+            if st.button("Advance 1 Hour"):
+                update_prices()
+            if st.button("Advance 1 Day"):
+                update_prices(ticks=TICKS_PER_DAY)
+        with col_advance2:
+            if st.button("Advance 1 Week"):
+                update_prices(ticks=7 * TICKS_PER_DAY)
+            if st.button("Advance 1 Month"):
+                update_prices(ticks=30 * TICKS_PER_DAY)
+        if st.button("Advance 1 Year"):
+            update_prices(ticks=365 * TICKS_PER_DAY)
+
+    st.sidebar.divider()
+    with st.sidebar.expander("📉 Adjust Stock Volatility"):
+        st.markdown("##### Change Volatility")
+        tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
+        selected_vol_ticker = st.selectbox("Select Stock", tickers)
+        current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn, params=(selected_vol_ticker,)).iloc[0, 0]
+        new_vol = st.number_input("New Volatility", value=current_vol, step=0.001, format="%.3f", key=f"vol_{selected_vol_ticker}")
+        if st.button("📈 Apply Volatility Change"):
+            cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
+            conn.commit()
+            st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
+
+    st.sidebar.divider()
+    with st.sidebar.expander("🏦 Market Parameters"):
+        st.markdown("##### Set Global Parameters")
+        new_rfr = st.number_input("Risk-Free Rate", value=st.session_state.risk_free_rate, step=0.0001, format="%.4f")
+        st.session_state.risk_free_rate = new_rfr
+        new_erp = st.number_input("Equity Risk Premium", value=st.session_state.equity_risk_premium, step=0.0001, format="%.4f")
+        st.session_state.equity_risk_premium = new_erp
+        tick_rate = st.slider("⏱️ Tick Interval (seconds)", 10, 300, st.session_state.tick_interval_sec, step=10)
+        st.session_state.tick_interval_sec = tick_rate
+
+    st.sidebar.divider()
+    with st.sidebar.expander("🌐 Market Sentiment"):
+        st.markdown("##### Influence Market Direction")
+        market_sentiment_options = {
+            "Bubbling": "📈 Bubbling (Strong Upward)",
+            "Booming": "↗️ Booming (Moderately Bullish)",
+            "Stagnant": "➡️ Stagnant (Neutral)",
+            "Receding": "↘️ Receding (Downward Trend)",
+            "Depression": "📉 Depression (Heavy Bearish)"
+        }
+        selected_sentiment_key = st.selectbox("Set Sentiment", list(market_sentiment_options.keys()), index=list(market_sentiment_options.keys()).index(st.session_state.market_sentiment))
+        st.session_state.market_sentiment = selected_sentiment_key
