@@ -416,8 +416,8 @@ def display_stock_history(ticker):
                 st.altair_chart(chart, use_container_width=True)
             else:
                 st.info("No price history available for the selected timeframe.")
-            except SQLAlchemyError as e:
-                st.error(f"Error displaying stock history: {e}")
+    except SQLAlchemyError as e:
+        st.error(f"Error displaying stock history: {e}")
 
 
 if selected_ticker:
