@@ -30,8 +30,6 @@ def get_connection():
         st.error(f"Error connecting to MySQL: {e}")
         return None
 
-
-
 def get_cursor(conn):
     """Gets a cursor from the database connection."""
     try:
@@ -57,16 +55,27 @@ def initialize_database():
     try:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS stocks (
-                Ticker TEXT PRIMARY KEY,
-                Name TEXT,
-                Price REAL,
-                Volatility REAL,
-                InitialPrice REAL,
-                DriftMultiplier REAL DEFAULT 1.0
+                Ticker VARCHAR(10) PRIMARY KEY,
+                Name VARCHAR(255),
+                Price DOUBLE,
+                Volatility DOUBLE,
+                InitialPrice DOUBLE,
+                DriftMultiplier DOUBLE DEFAULT 1.0
             )
-            """)
-        cursor.execute("CREATE TABLE IF NOT EXISTS price_history (Timestamp TEXT, Ticker TEXT, Price REAL)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS market_status (key TEXT PRIMARY KEY, value TEXT)")
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS price_history (
+                Timestamp DATETIME,
+                Ticker VARCHAR(10),
+                Price DOUBLE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_status (
+                `key` VARCHAR(255) PRIMARY KEY,
+                `value` VARCHAR(255)
+            )
+        """)
         conn.commit()
     except Exception as e:
         st.error(f"Error initializing database tables: {e}")
@@ -153,13 +162,13 @@ def initialize_stocks():
             for i in range(len(base_tickers)):
                 cursor.execute("""
                     INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
             tmf_price = np.average(initial_prices, weights=initial_prices)
             tmf_vol = np.average(volatility, weights=initial_prices)
             cursor.execute("""
                     INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                     """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
             conn.commit()
             st.success("Stocks table initialized.")  # Add success message
@@ -204,7 +213,7 @@ with col_admin:
                 if cursor:
                     try:
                         cursor.execute(
-                            "REPLACE INTO market_status (key, value) VALUES (?, ?)",
+                            "REPLACE INTO market_status (key, value) VALUES (%s, %s)",
                             ("running", str(st.session_state.market_running))
                         )
                         conn.commit()
@@ -287,13 +296,13 @@ def update_prices(ticks=1):
                 # Update InitialPrice once per real day
                 if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:  # Update once per 24 simulation hours
                     new_initial_price = row["InitialPrice"] * 1.00005  # Slightly reduced growth
-                    cursor.execute("UPDATE stocks SET InitialPrice = ? WHERE Ticker = ?",
+                    cursor.execute("UPDATE stocks SET InitialPrice = %s WHERE Ticker = %s",
                                    (new_initial_price, row["Ticker"]))
 
                 df.at[idx, "Price"] = new_price
                 sim_timestamp = SIM_START_DATE + timedelta(
                     hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))  # Corrected timedelta
-                cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+                cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
                                (sim_timestamp.isoformat(), row["Ticker"], new_price))
 
             # Update TMF based on weighted average (using volatility as weight)
@@ -302,7 +311,7 @@ def update_prices(ticks=1):
             df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
             for _, row in df.iterrows():
-                cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (row["Price"], row["Ticker"]))
+                cursor.execute("UPDATE stocks SET Price = %s WHERE Ticker = %s", (row["Price"], row["Ticker"]))
 
             conn.commit()
             st.session_state.sim_time += 1
@@ -410,7 +419,7 @@ def display_stock_history(ticker):
 
     try:
         hist = pd.read_sql(
-            "SELECT * FROM price_history WHERE Ticker = ? ORDER BY Timestamp",
+            "SELECT * FROM price_history WHERE Ticker = %s ORDER BY Timestamp",
             conn,
             params=(ticker,)
         )
@@ -524,10 +533,10 @@ if is_admin:
                 cursor = get_cursor(conn)
                 if cursor:
                     try:
-                        cursor.execute("UPDATE stocks SET Price = ? WHERE Ticker = ?", (price_change, ticker_to_change))
+                        cursor.execute("UPDATE stocks SET Price = %s WHERE Ticker = %s", (price_change, ticker_to_change))
                         sim_timestamp_now = SIM_START_DATE + timedelta(
                             hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
-                        cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (?, ?, ?)",
+                        cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
                                        (sim_timestamp_now.isoformat(), ticker_to_change, price_change))
                         conn.commit()
                         st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
@@ -565,12 +574,12 @@ if is_admin:
                 try:
                     tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
                     selected_vol_ticker = st.selectbox("Select Stock", tickers)
-                    current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = ?", conn,
+                    current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = %s", conn,
                                             params=(selected_vol_ticker,)).iloc[0, 0]
                     new_vol = st.number_input("New Volatility", value=current_vol, step=0.001, format="%.3f",
                                             key=f"vol_{selected_vol_ticker}")
                     if st.button("📈 Apply Volatility Change"):
-                        cursor.execute("UPDATE stocks SET Volatility = ? WHERE Ticker = ?", (new_vol, selected_vol_ticker))
+                        cursor.execute("UPDATE stocks SET Volatility = %s WHERE Ticker = %s", (new_vol, selected_vol_ticker))
                         conn.commit()
                         st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
                 except Exception as e:
@@ -590,12 +599,12 @@ if is_admin:
                 try:
                     drift_tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
                     selected_drift_ticker = st.selectbox("Select Stock to Adjust Drift", drift_tickers)
-                    current_drift = pd.read_sql("SELECT DriftMultiplier FROM stocks WHERE Ticker = ?", conn,
+                    current_drift = pd.read_sql("SELECT DriftMultiplier FROM stocks WHERE Ticker = %s", conn,
                                                 params=(selected_drift_ticker,)).iloc[0, 0]
                     new_drift = st.number_input("Drift Multiplier (Dependant on Market Sentiment)", value=current_drift,
                                                 step=0.01, format="%.2f", key=f"drift_{selected_drift_ticker}")
                     if st.button("✅ Apply Drift Change"):
-                        cursor.execute("UPDATE stocks SET DriftMultiplier = ? WHERE Ticker = ?",
+                        cursor.execute("UPDATE stocks SET DriftMultiplier = %s WHERE Ticker = %s",
                                         (new_drift, selected_drift_ticker))
                         conn.commit()
                         st.success(f"Updated drift multiplier of {selected_drift_ticker} to {new_drift:.2f}")
