@@ -4,3 +4,5 @@ numpy
 altair
 streamlit-autorefresh
 mysql-connector-python
+SQLAlchemy
+pymysql
