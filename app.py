@@ -212,10 +212,12 @@ with col_admin:
                 cursor = get_cursor(conn)
                 if cursor:
                     try:
-                        cursor.execute(
-                            "REPLACE INTO market_status (key, value) VALUES (%s, %s)",
-                            ("running", str(st.session_state.market_running))
-                        )
+                        cursor.execute("""
+                            INSERT INTO market_status (`key`, `value`)
+                            VALUES (%s, %s)
+                            ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)
+                        """, ("running", str(st.session_state.market_running)))
+
                         conn.commit()
                         st.success(f"Market {'resumed' if st.session_state.market_running else 'paused'}")
                     except Exception as e:
@@ -351,27 +353,6 @@ else:
         st.caption("⏱️ Waiting for first update...")
     else:
         st.caption("⏸️ Market paused")
-
-
-# --- Download Button ---
-def download_database():
-    """Downloads the SQLite database file."""
-    try:
-        with open(DATABASE_PATH, "rb") as f:
-            db_bytes = f.read()
-        st.download_button(
-            label="💾 Download Current Database",
-            data=db_bytes,
-            file_name="market_data.db",
-            mime="application/octet-stream"
-        )
-    except Exception as e:
-        st.error(f"Error downloading database: {e}")
-
-
-download_database()
-st.markdown("---")
-
 
 # --- Display Stock Data ---
 st.markdown("### 📈 Current Stock Prices")
