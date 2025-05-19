@@ -12,7 +12,7 @@ TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-
+st.dataframe(pd.read_sql("SELECT * FROM price_history", engine))
 # --- Database Connection ---
 @st.cache_resource
 def get_sqlalchemy_engine():
