@@ -346,79 +346,84 @@ def display_stock_history(ticker):
             params={"ticker": ticker}
         )
 
-        if not hist.empty:
-            hist["Date"] = pd.to_datetime(hist["Timestamp"], errors="coerce")
-            hist["SimTime"] = (hist["Date"] - SIM_START_DATE).dt.total_seconds() // 3600
+        if hist.empty:
+            st.info("No history found for this stock.")
+            return
 
-            view_range = st.radio(
-                "Select timeframe:",
-                ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"],
-                horizontal=True
-            )
+        hist["Date"] = pd.to_datetime(hist["Timestamp"], errors="coerce")
+        hist["SimTime"] = (hist["Date"] - SIM_START_DATE).dt.total_seconds() // 3600
 
-            now_sim_hours = st.session_state.sim_time * (24 / TICKS_PER_DAY)
+        view_range = st.radio(
+            "Select timeframe:",
+            ["1 Day", "1 Week", "1 Month", "3 Months", "Year to Date", "1Y", "Alltime"],
+            horizontal=True
+        )
 
+        now_sim_hours = st.session_state.sim_time * (24 / TICKS_PER_DAY)
+
+        # Apply view range logic
         if view_range == "1 Day":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 24].copy()
             x_field = alt.X("Date:T", title="Hour", axis=alt.Axis(format="%H:%M"))
-        
+
         elif view_range == "1 Week":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 168].copy()
             hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
-        
+
         elif view_range == "1 Month":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 720].copy()
             hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Date", axis=alt.Axis(format="%b %d"))
-        
+
         elif view_range == "3 Months":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 2160].copy()
             hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Week", axis=alt.Axis(format="%b %d"))
-        
+
         elif view_range == "Year to Date":
             hist_filtered = hist[hist["Date"].dt.year == SIM_START_DATE.year].copy()
             hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Month", axis=alt.Axis(format="%b"))
-        
+
         elif view_range == "1Y":
             hist_filtered = hist[hist["SimTime"] >= now_sim_hours - 8760].copy()
             hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Month", axis=alt.Axis(format="%b"))
-        
+
         else:  # Alltime
             hist_filtered = hist.copy()
             hist_filtered["Date"] = hist_filtered["Date"].dt.floor("D")
             hist_filtered = hist_filtered.groupby("Date", as_index=False).agg({"Price": "mean"})
             x_field = alt.X("Date:T", title="Year", axis=alt.Axis(format="%Y"))
 
-            if not hist_filtered.empty:
-                low, high = hist_filtered["Price"].min(), hist_filtered["Price"].max()
-                padding = (high - low) * 0.1
-        
-                chart = alt.Chart(hist_filtered).mark_line(color="steelblue", size=2).encode(
-                    x=x_field,
-                    y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
-                            axis=alt.Axis(title="Price (cr)", grid=True)),
-                    tooltip=["Date:T", "Price:Q"]
-                ).properties(
-                    title=f"{ticker} Price History",
-                    width="container",
-                    height=300
-                ).interactive()  # Added interactivity for zoom/pan
+        # Only plot if data exists
+        if not hist_filtered.empty:
+            low, high = hist_filtered["Price"].min(), hist_filtered["Price"].max()
+            padding = (high - low) * 0.1
 
-                st.altair_chart(chart, use_container_width=True)
-            else:
-                st.info("No price history available for the selected timeframe.")
+            chart = alt.Chart(hist_filtered).mark_line(color="steelblue", size=2).encode(
+                x=x_field,
+                y=alt.Y("Price:Q", scale=alt.Scale(domain=[low - padding, high + padding]),
+                        axis=alt.Axis(title="Price (cr)", grid=True)),
+                tooltip=["Date:T", "Price:Q"]
+            ).properties(
+                title=f"{ticker} Price History",
+                width="container",
+                height=300
+            ).interactive()
+
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No price history available for the selected timeframe.")
+
     except SQLAlchemyError as e:
         st.error(f"Error displaying stock history: {e}")
-
 
 if selected_ticker:
     display_stock_history(selected_ticker)
