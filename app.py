@@ -502,8 +502,8 @@ if is_admin:
     st.sidebar.header("⚙️ Admin Tools")
 
     if st.button("Restore Default DB"):
-    os.remove(DATABASE_PATH)
-    st.experimental_rerun()
+        os.remove(DATABASE_PATH)
+        st.experimental_rerun()
 
     st.sidebar.divider()
     with st.sidebar.expander("🎯 Manual Stock Controls"):
