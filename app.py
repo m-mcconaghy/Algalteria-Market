@@ -10,26 +10,19 @@ import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-# Make sure this is the first thing in your app (before DB connection, etc.)
-if "database_path" not in st.session_state:
-    st.session_state.database_path = "market.db"  # Default fallback
-
+# Must go before any other Streamlit logic
 st.sidebar.header("⚙️ Admin Tools")
 with st.sidebar.expander("📂 Upload New Database (Before Init)"):
     uploaded_file = st.file_uploader("Upload SQLite DB", type=["db"], key="early_db_upload")
     if uploaded_file is not None:
-        uploaded_name = uploaded_file.name
-        save_path = os.path.join(".", uploaded_name)
-
-        with open(save_path, "wb") as f:
+        with open("market.db", "wb") as f:
             f.write(uploaded_file.read())
+        st.success("✅ Database uploaded and applied.")
+        st.experimental_rerun()  # Ensure app uses new DB immediately
 
-        st.session_state.database_path = save_path
-        st.success(f"✅ Uploaded and switched to `{uploaded_name}`")
-        st.stop()  # HALT execution here, so nothing runs using the previous DB
         
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
-DATABASE_PATH = st.session_state.database_path
+DATABASE_PATH = "market.db"
 
 # --- Database Connection ---
 def get_connection():
