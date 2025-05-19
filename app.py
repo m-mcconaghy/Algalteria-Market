@@ -234,7 +234,7 @@ def update_prices(ticks=1):
                     new_price = float(np.clip(new_price, row["Price"] * 0.99, row["Price"] * 1.01))
                     new_price = max(new_price, 0.01)
 
-                     if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
+                    if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
                         new_initial_price = row["InitialPrice"] * 1.00005
                         update_initial_price_batch.append((new_initial_price, row["Ticker"]))
 
