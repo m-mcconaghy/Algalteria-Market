@@ -10,7 +10,6 @@ import altair as alt
 import os
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
-DATABASE_PATH = "market.db"
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
