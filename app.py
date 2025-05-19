@@ -159,16 +159,23 @@ def initialize_stocks():
         cursor.execute("SELECT COUNT(*) FROM stocks")
         if cursor.fetchone()[0] == 0:
             for i in range(len(base_tickers)):
-                cursor.execute("""
-                    INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """, (base_tickers[i], names[i], initial_prices[i], volatility[i], initial_prices[i]))
-            tmf_price = np.average(initial_prices, weights=initial_prices)
-            tmf_vol = np.average(volatility, weights=initial_prices)
+                for i in range(len(base_tickers)):
+                    cursor.execute("""
+                        INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        base_tickers[i],
+                        names[i],
+                        float(initial_prices[i]),
+                        float(volatility[i]),
+                        float(initial_prices[i])
+                    ))
+            tmf_price = float(np.average(initial_prices, weights=initial_prices))
+            tmf_vol = float(np.average(volatility, weights=initial_prices))
             cursor.execute("""
-                    INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
+                INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+                VALUES (%s, %s, %s, %s, %s)
+                """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
             conn.commit()
             st.success("Stocks table initialized.")  # Add success message
         else:
