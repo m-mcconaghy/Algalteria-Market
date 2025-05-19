@@ -1,18 +1,24 @@
 import streamlit as st
 import os
 
-DATABASE_PATH = "market.db"
+# Make sure this is the first thing in your app (before DB connection, etc.)
+if "database_path" not in st.session_state:
+    st.session_state.database_path = "market.db"  # Default fallback
 
-# --- Early DB Upload (before any logic touches the DB) ---
 st.sidebar.header("⚙️ Admin Tools")
 with st.sidebar.expander("📂 Upload New Database (Before Init)"):
     uploaded_file = st.file_uploader("Upload SQLite DB", type=["db"], key="early_db_upload")
     if uploaded_file is not None:
-        with open(DATABASE_PATH, "wb") as f:
-            f.write(uploaded_file.read())
-        st.success("✅ Database uploaded. Please refresh or wait a moment.")
-        st.stop()  # Prevent all other logic from using the old DB
+        uploaded_name = uploaded_file.name
+        save_path = os.path.join(".", uploaded_name)
 
+        with open(save_path, "wb") as f:
+            f.write(uploaded_file.read())
+
+        st.session_state.database_path = save_path
+        st.success(f"✅ Uploaded and switched to `{uploaded_name}`")
+        st.stop()  # HALT execution here, so nothing runs using the previous DB
+        
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -22,7 +28,7 @@ from streamlit_autorefresh import st_autorefresh
 import altair as alt
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
-DATABASE_PATH = "market.db"
+DATABASE_PATH = st.session_state.database_path
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
