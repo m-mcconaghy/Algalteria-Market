@@ -99,7 +99,7 @@ def load_market_status():
         return True
 
     try:
-        cursor.execute("SELECT value FROM market_status WHERE key = 'running'")
+        cursor.execute("SELECT value FROM market_status WHERE 'key' = 'running'")
         result = cursor.fetchone()
         if result:
             return result[0].lower() == 'true'
