@@ -376,6 +376,11 @@ def display_stock_history(ticker):
                 hist_filtered.loc["Date"] = hist_filtered.loc["Date"].dt.floor("D")
                 hist_filtered.loc = hist_filtered.loc.groupby("Date", as_index=False).agg({"Price": "mean"})
                 x_field = alt.X("Date:T", title="Week", axis=alt.Axis(format="%b %d"))
+            elif view_range == "Year to Date":
+                hist_filtered.loc = hist[hist["Date"].dt.year == SIM_START_DATE.year]
+                hist_filtered.loc["Date"] = hist_filtered.loc["Date"].dt.floor("D")
+                hist_filtered.loc = hist_filtered.loc.groupby("Date", as_index=False).agg({"Price": "mean"})
+                x_field = alt.X("Date:T", title="Month", axis=alt.Axis(format="%b"))
             elif view_range == "1Y":
                 hist_filtered.loc = hist[hist["SimTime"] >= now_sim_hours - 8760]
                 hist_filtered.loc["Date"] = hist_filtered.loc["Date"].dt.floor("D")
