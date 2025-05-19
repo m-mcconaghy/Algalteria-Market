@@ -243,10 +243,10 @@ SIM_START_DATE = pd.Timestamp("2200-01-01")
 
 # --- Final update_prices function ---
 def update_prices(ticks=1):
-    """Updates stock prices for a given number of ticks."""
+    """Optimized: Updates stock prices using batch inserts/updates."""
     conn = get_connection()
     if conn is None:
-        return  # Exit if no connection
+        return
 
     cursor = get_cursor(conn)
     if cursor is None:
@@ -254,21 +254,24 @@ def update_prices(ticks=1):
         return
 
     try:
+        SIM_START_DATE = pd.Timestamp("2200-01-01")
         for _ in range(ticks):
             df = pd.read_sql("SELECT * FROM stocks", conn)
-            tick_scale = 24 / TICKS_PER_DAY  # how many hours this tick simulates
+            tick_scale = 24 / TICKS_PER_DAY
+
+            price_history_batch = []
+            update_price_batch = []
+            update_initial_price_batch = []
 
             for idx, row in df.iterrows():
                 if row["Ticker"] == "TMF":
                     continue
 
-                # Scaled volatility for the current tick resolution
                 regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
                 scaled_vol = row["Volatility"] * np.sqrt(tick_scale / 24)
                 momentum = np.random.choice([1, -1])
                 noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
 
-                # Drift with scaled time
                 financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
                 sentiment_multiplier = {
                     "Bubbling": 0.03,
@@ -279,48 +282,48 @@ def update_prices(ticks=1):
                 }
                 selected_sentiment = st.session_state.get("market_sentiment", "Booming")
                 mult = sentiment_multiplier.get(selected_sentiment, 1.0)
-                # Incorporate the stock-specific drift multiplier
                 drift_rate = (financial_drift * mult * row["DriftMultiplier"]) / 24
-                drift = np.clip(drift_rate * tick_scale * row["Price"], -0.002 * row["Price"],
-                               0.002 * row["Price"])
+                drift = np.clip(drift_rate * tick_scale * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
 
-                # Mean reversion component
-                mean_reversion_strength = 0.01  # Adjust this strength as needed
-                mean_reversion = mean_reversion_strength * (row["InitialPrice"] - row["Price"])
+                mean_reversion = 0.01 * (row["InitialPrice"] - row["Price"])
 
-                # Optional: adjust shock chance for tick scale (roughly per day chance = 0.1%)
                 daily_shock_chance = 0.001
                 shock_chance = 1 - (1 - daily_shock_chance) ** (tick_scale / 24)
-                shock_factor = 1.0
-                if np.random.rand() < shock_chance:
-                    shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5])
+                shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5]) if np.random.rand() < shock_chance else 1.0
 
                 base_price = row["Price"] * shock_factor
-                new_price = base_price + noise * base_price + drift + mean_reversion  # Added mean reversion
-                limit = 0.01  # 1% per tick
-                new_price = float(np.clip(new_price, row["Price"] * (1 - limit), row["Price"] * (1 + limit)))
+                new_price = base_price + noise * base_price + drift + mean_reversion
+                new_price = float(np.clip(new_price, row["Price"] * 0.99, row["Price"] * 1.01))
                 new_price = max(new_price, 0.01)
 
-                # Update InitialPrice once per real day
-                if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:  # Update once per 24 simulation hours
-                    new_initial_price = row["InitialPrice"] * 1.00005  # Slightly reduced growth
-                    cursor.execute("UPDATE stocks SET InitialPrice = %s WHERE Ticker = %s",
-                                   (new_initial_price, row["Ticker"]))
+                if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
+                    new_initial_price = row["InitialPrice"] * 1.00005
+                    update_initial_price_batch.append((new_initial_price, row["Ticker"]))
 
                 df.at[idx, "Price"] = new_price
-                sim_timestamp = SIM_START_DATE + timedelta(
-                    hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))  # Corrected timedelta
-                cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
-                               (sim_timestamp.isoformat(), row["Ticker"], new_price))
+                sim_timestamp = SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
+                price_history_batch.append((sim_timestamp, row["Ticker"], new_price))
 
-            # Update TMF based on weighted average (using volatility as weight)
             tmf_data = df[df["Ticker"] != "TMF"]
-            tmf_price = np.average(tmf_data["Price"], weights=tmf_data["Volatility"])
+            tmf_price = float(np.average(tmf_data["Price"], weights=tmf_data["Volatility"]))
             df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
             for _, row in df.iterrows():
-                cursor.execute("UPDATE stocks SET Price = %s WHERE Ticker = %s", (row["Price"], row["Ticker"]))
+                update_price_batch.append((row["Price"], row["Ticker"]))
 
+            cursor.executemany(
+                "INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
+                price_history_batch
+            )
+            cursor.executemany(
+                "UPDATE stocks SET Price = %s WHERE Ticker = %s",
+                update_price_batch
+            )
+            if update_initial_price_batch:
+                cursor.executemany(
+                    "UPDATE stocks SET InitialPrice = %s WHERE Ticker = %s",
+                    update_initial_price_batch
+                )
             conn.commit()
             st.session_state.sim_time += 1
     except Exception as e:
@@ -329,6 +332,7 @@ def update_prices(ticks=1):
     finally:
         cursor.close()
         conn.close()
+
 
 
 # --- Auto-refresh and Price Updates ---
