@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 import pandas as pd
 import numpy as np
 import sqlite3
@@ -7,38 +6,19 @@ from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
+import os
+
+TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
+DATABASE_PATH = "market.db"
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-DB_FILENAME = os.path.join(os.getcwd(), "market.db")  # ✅ Writable path
-st.sidebar.text(f"Writable path: {DB_FILENAME}")
-
-st.sidebar.header("⚙️ Admin Tools")
-with st.sidebar.expander("📂 Upload SQLite DB"):
-    uploaded_file = st.file_uploader("Upload a `.db` file", type=["db"], key="db_upload")
-    if uploaded_file is not None:
-        try:
-            with open(DB_FILENAME, "wb") as f:
-                f.write(uploaded_file.read())
-            st.success("✅ Database uploaded successfully.")
-            st.session_state.clear()  # Wipe any old references
-            st.rerun()                # ✅ Restart with fresh DB
-        except Exception as e:
-            st.error(f"❌ Failed to save DB: {e}")
-
-# --- Block App if DB Missing ---
-if not os.path.exists(DB_FILENAME):
-    st.error("🚫 `market.db` not found. Please upload to begin.")
-    st.stop()
-
-        
-DATABASE_PATH = DB_FILENAME
 
 # --- Database Connection ---
 def get_connection():
     """Gets or creates a database connection."""
     try:
-        conn = sqlite3.connect("DB_FILENAME", check_same_thread=False)
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
         return conn
     except Exception as e:
         st.error(f"Error connecting to the database: {e}")
@@ -54,9 +34,6 @@ def get_cursor(conn):
         st.error(f"Error getting cursor: {e}")
         return None
 
-st.sidebar.text(f"Current DB: {DB_FILENAME}")
-st.sidebar.text(f"Exists: {os.path.exists(DB_FILENAME)}")
-st.sidebar.text(f"Size: {os.path.getsize(DB_FILENAME) if os.path.exists(DB_FILENAME) else 0} bytes")
 
 # --- Initialize Database Tables ---
 def initialize_database():
@@ -93,7 +70,6 @@ def initialize_database():
 
 
 initialize_database()  # Call at the beginning
-TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
 # --- Load market running state from database ---
 def load_market_status():
@@ -512,9 +488,20 @@ if selected_ticker:
 if is_admin:
     st.sidebar.header("⚙️ Admin Tools")
 
-    if st.button("Restore Default DB"):
-        os.remove(DATABASE_PATH)
-        st.experimental_rerun()
+    with st.sidebar.expander("Database Upload"):
+        uploaded_file = st.file_uploader("Upload Database File", type=["db"])
+        if uploaded_file is not None:
+            try:
+                with open(DATABASE_PATH, "wb") as f:
+                    f.write(uploaded_file.read())
+                st.success("Database file uploaded successfully! Please refresh the page to load the data.")
+
+                # Clear session state to force reload
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun() # Use st.rerun()
+            except Exception as e:
+                st.error(f"Error handling uploaded database: {e}")
 
     st.sidebar.divider()
     with st.sidebar.expander("🎯 Manual Stock Controls"):
