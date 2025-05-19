@@ -276,7 +276,7 @@ def update_prices(ticks=1):
                 sentiment_multiplier = {
                     "Bubbling": 0.03,
                     "Booming": 0.01,
-                    "Stagnant": 0.005,
+                    "Stagnant": 0.00,
                     "Receding": -0.02,
                     "Depression": -0.05
                 }
@@ -301,7 +301,7 @@ def update_prices(ticks=1):
                     update_initial_price_batch.append((new_initial_price, row["Ticker"]))
 
                 df.at[idx, "Price"] = new_price
-                sim_timestamp = (SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))).to_pydatetime()
+                sim_timestamp = SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
                 price_history_batch.append((sim_timestamp, row["Ticker"], new_price))
 
             tmf_data = df[df["Ticker"] != "TMF"]
