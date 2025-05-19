@@ -38,7 +38,7 @@ DATABASE_PATH = DB_FILENAME
 def get_connection():
     """Gets or creates a database connection."""
     try:
-        conn = sqlite3.connect("DATABASE_PATH", check_same_thread=False)
+        conn = sqlite3.connect("DB_FILENAME", check_same_thread=False)
         return conn
     except Exception as e:
         st.error(f"Error connecting to the database: {e}")
