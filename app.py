@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import sqlite3
+import mysql.connector
+from mysql.connector import Error
 from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
@@ -16,13 +17,19 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 
 # --- Database Connection ---
 def get_connection():
-    """Gets or creates a database connection."""
+    """Connect to MySQL database on Google Cloud."""
     try:
-        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        conn = mysql.connector.connect(
+            host=st.secrets["DB_HOST"],         # Your Google Cloud MySQL IP
+            user=st.secrets["DB_USER"],         # Your MySQL username
+            password=st.secrets["DB_PASSWORD"], # Your MySQL password
+            database=st.secrets["DB_NAME"]      # Your database name
+        )
         return conn
-    except Exception as e:
-        st.error(f"Error connecting to the database: {e}")
-        return None  # Important: Return None on failure
+    except Error as e:
+        st.error(f"Error connecting to MySQL: {e}")
+        return None
+
 
 
 def get_cursor(conn):
