@@ -10,8 +10,8 @@ import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-DB_FILENAME = "/mount/src/market.db"  # ✅ Writable path on Streamlit Cloud
-# --- Upload Interface ---
+DB_FILENAME = "/mount/src/market.db"
+
 st.sidebar.header("⚙️ Admin Tools")
 with st.sidebar.expander("📂 Upload SQLite DB"):
     uploaded_file = st.file_uploader("Upload a `.db` file", type=["db"], key="db_upload")
@@ -19,8 +19,9 @@ with st.sidebar.expander("📂 Upload SQLite DB"):
         try:
             with open(DB_FILENAME, "wb") as f:
                 f.write(uploaded_file.read())
-            st.success("✅ Database uploaded successfully. Reloading...")
-            st.experimental_rerun()
+            st.success("✅ Database uploaded successfully.")
+            st.session_state.clear()  # Wipe any old references
+            st.rerun()                # ✅ Restart with fresh DB
         except Exception as e:
             st.error(f"❌ Failed to save DB: {e}")
 
@@ -30,7 +31,7 @@ if not os.path.exists(DB_FILENAME):
     st.stop()
 
         
-DATABASE_PATH = "market.db"
+DATABASE_PATH = DB_FILENAME
 
 # --- Database Connection ---
 def get_connection():
