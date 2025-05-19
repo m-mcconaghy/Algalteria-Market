@@ -8,6 +8,8 @@ import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
 import os
+import mysql.connector
+from mysql.connector import Error
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
@@ -15,29 +17,13 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 
 
 # --- Database Connection ---
-def get_connection():
-    """Connect to MySQL database on Google Cloud."""
-    try:
-        conn = mysql.connector.connect(
-            host=st.secrets["DB_HOST"],         # Your Google Cloud MySQL IP
-            user=st.secrets["DB_USER"],         # Your MySQL username
-            password=st.secrets["DB_PASSWORD"], # Your MySQL password
-            database=st.secrets["DB_NAME"]      # Your database name
-        )
-        return conn
-    except Error as e:
-        st.error(f"Error connecting to MySQL: {e}")
-        return None
+from sqlalchemy import create_engine
 
-def get_cursor(conn):
-    """Gets a cursor from the database connection."""
-    try:
-        cursor = conn.cursor()
-        return cursor
-    except Exception as e:
-        st.error(f"Error getting cursor: {e}")
-        return None
-
+@st.cache_resource
+def get_sqlalchemy_engine():
+    return create_engine(
+        f"mysql+pymysql://{st.secrets['DB_USER']}:{st.secrets['DB_PASSWORD']}@{st.secrets['DB_HOST']}/{st.secrets['DB_NAME']}"
+    )
 
 # --- Initialize Database Tables ---
 def initialize_database():
