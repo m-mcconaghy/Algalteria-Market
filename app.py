@@ -532,8 +532,8 @@ if is_admin:
                 if cursor:
                     try:
                         cursor.execute("UPDATE stocks SET Price = %s WHERE Ticker = %s", (price_change, ticker_to_change))
-                        sim_timestamp_now = SIM_START_DATE + timedelta(
-                            hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
+                        sim_timestamp_now = (SIM_START_DATE + timedelta(
+                            hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))).to_pydatetime()
                         cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
                                        (sim_timestamp_now.isoformat(), ticker_to_change, price_change))
                         conn.commit()
@@ -552,15 +552,25 @@ if is_admin:
         with col_advance1:
             if st.button("Advance 1 Hour"):
                 update_prices(ticks=1)
+                st.success("Advanced 1 day")
+                st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
             if st.button("Advance 1 Day"):
                 update_prices(ticks=TICKS_PER_DAY)
+                st.success("Advanced 1 day")
+                st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
         with col_advance2:
             if st.button("Advance 1 Week"):
                 update_prices(ticks=7 * TICKS_PER_DAY)
+                st.success("Advanced 1 day")
+                st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
             if st.button("Advance 1 Month"):
                 update_prices(ticks=30 * TICKS_PER_DAY)
+                st.success("Advanced 1 day")
+                st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
         if st.button("Advance 1 Year"):
             update_prices(ticks=365 * TICKS_PER_DAY)
+            st.success("Advanced 1 day")
+            st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
 
     st.sidebar.divider()
     with st.sidebar.expander("📉 Adjust Stock Volatility"):
