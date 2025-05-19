@@ -161,7 +161,7 @@ def initialize_stocks():
             for i in range(len(base_tickers)):
                 for i in range(len(base_tickers)):
                     cursor.execute("""
-                        INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+                        INSERT IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
                         VALUES (%s, %s, %s, %s, %s)
                     """, (
                         base_tickers[i],
@@ -173,7 +173,7 @@ def initialize_stocks():
             tmf_price = float(np.average(initial_prices, weights=initial_prices))
             tmf_vol = float(np.average(volatility, weights=initial_prices))
             cursor.execute("""
-                INSERT INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+                INSERT IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
                 VALUES (%s, %s, %s, %s, %s)
                 """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
             conn.commit()
