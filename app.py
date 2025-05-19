@@ -19,7 +19,7 @@ with st.sidebar.expander("📂 Upload SQLite DB"):
     if uploaded_file is not None:
         try:
             with open(DB_FILENAME, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+                f.write(uploaded_file.read())
             st.success("✅ Database uploaded. Reloading...")
             st.experimental_rerun()
         except Exception as e:
