@@ -1,22 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import mysql.connector
-from mysql.connector import Error
 from datetime import datetime, timedelta
 import time
 from streamlit_autorefresh import st_autorefresh
 import altair as alt
-import os
-import mysql.connector
-from mysql.connector import Error
-from sqlalchemy import create_engine
-
-@st.cache_resource
-def get_sqlalchemy_engine():
-    return create_engine(
-        f"mysql+pymysql://{st.secrets['DB_USER']}:{st.secrets['DB_PASSWORD']}@{st.secrets['DB_HOST']}/{st.secrets['DB_NAME']}"
-    )
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
@@ -24,57 +14,45 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 
 
 # --- Database Connection ---
-from sqlalchemy import create_engine
-
 @st.cache_resource
 def get_sqlalchemy_engine():
     return create_engine(
         f"mysql+pymysql://{st.secrets['DB_USER']}:{st.secrets['DB_PASSWORD']}@{st.secrets['DB_HOST']}/{st.secrets['DB_NAME']}"
     )
 
+engine = get_sqlalchemy_engine()
+
 # --- Initialize Database Tables ---
 def initialize_database():
     """Initializes the database tables if they don't exist."""
-    conn = get_connection()
-    if conn is None:
-        return  # Exit if no connection
-
-    cursor = get_cursor(conn)
-    if cursor is None:
-        conn.close()
-        return
-
     try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS stocks (
-                Ticker VARCHAR(10) PRIMARY KEY,
-                Name VARCHAR(255),
-                Price DOUBLE,
-                Volatility DOUBLE,
-                InitialPrice DOUBLE,
-                DriftMultiplier DOUBLE DEFAULT 1.0
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS price_history (
-                Timestamp DATETIME,
-                Ticker VARCHAR(10),
-                Price DOUBLE
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS market_status (
-                `key` VARCHAR(255) PRIMARY KEY,
-                `value` VARCHAR(255)
-            )
-        """)
-        conn.commit()
-    except Exception as e:
+        with engine.connect() as connection:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS stocks (
+                    Ticker VARCHAR(10) PRIMARY KEY,
+                    Name VARCHAR(255),
+                    Price DOUBLE,
+                    Volatility DOUBLE,
+                    InitialPrice DOUBLE,
+                    DriftMultiplier DOUBLE DEFAULT 1.0
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS price_history (
+                    Timestamp DATETIME,
+                    Ticker VARCHAR(10),
+                    Price DOUBLE
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS market_status (
+                    `key` VARCHAR(255) PRIMARY KEY,
+                    `value` VARCHAR(255)
+                )
+            """))
+            connection.commit()
+    except SQLAlchemyError as e:
         st.error(f"Error initializing database tables: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
 
 
 initialize_database()  # Call at the beginning
@@ -82,28 +60,19 @@ initialize_database()  # Call at the beginning
 # --- Load market running state from database ---
 def load_market_status():
     """Load market running status from database."""
-    conn = get_connection()
-    if conn is None:
-        return True  # Default to running if can't connect
-
-    cursor = get_cursor(conn)
-    if cursor is None:
-        conn.close()
-        return True
-
     try:
-        cursor.execute("SELECT value FROM market_status WHERE 'key' = 'running'")
-        result = cursor.fetchone()
-        if result:
-            return result[0].lower() == 'true'
-        else:
-            return True  # Default to running if no record exists
-    except Exception as e:
+        with engine.connect() as connection:
+            result = connection.execute(
+                text("SELECT value FROM market_status WHERE `key` = 'running'")
+            ).fetchone()
+            if result:
+                return result[0].lower() == 'true'
+            else:
+                return True  # Default to running if no record exists
+    except SQLAlchemyError as e:
         st.error(f"Error loading market status: {e}")
         return True
-    finally:
-        cursor.close()
-        conn.close()
+    return True
 
 
 # --- Session State Initialization ---
@@ -139,46 +108,39 @@ volatility = [0.04, 0.035, 0.015, 0.02, 0.025, 0.03, 0.06, 0.018, 0.025, 0.02, 0
 # --- Initialize Stocks Table ---
 def initialize_stocks():
     """Initializes the stocks table with data if it's empty."""
-    conn = get_connection()
-    if conn is None:
-        return
-
-    cursor = get_cursor(conn)
-    if cursor is None:
-        conn.close()
-        return
-
     try:
-        cursor.execute("SELECT COUNT(*) FROM stocks")
-        if cursor.fetchone()[0] == 0:
-            for i in range(len(base_tickers)):
+        with engine.connect() as connection:
+            count = connection.execute(text("SELECT COUNT(*) FROM stocks")).scalar_one()
+            if count == 0:
                 for i in range(len(base_tickers)):
-                    cursor.execute("""
+                    connection.execute(text("""
                         INSERT IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (
-                        base_tickers[i],
-                        names[i],
-                        float(initial_prices[i]),
-                        float(volatility[i]),
-                        float(initial_prices[i])
-                    ))
-            tmf_price = float(np.average(initial_prices, weights=initial_prices))
-            tmf_vol = float(np.average(volatility, weights=initial_prices))
-            cursor.execute("""
-                INSERT IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
-                VALUES (%s, %s, %s, %s, %s)
-                """, ("TMF", "Total Market Fund", tmf_price, tmf_vol, tmf_price))
-            conn.commit()
-            st.success("Stocks table initialized.")  # Add success message
-        else:
-            st.info("Stocks table already contains data.")
-    except Exception as e:
+                        VALUES (:ticker, :name, :price, :volatility, :initial_price)
+                    """), {
+                        "ticker": base_tickers[i],
+                        "name": names[i],
+                        "price": float(initial_prices[i]),
+                        "volatility": float(volatility[i]),
+                        "initial_price": float(initial_prices[i])
+                    })
+                tmf_price = float(np.average(initial_prices, weights=initial_prices))
+                tmf_vol = float(np.average(volatility, weights=initial_prices))
+                connection.execute(text("""
+                    INSERT IGNORE INTO stocks (Ticker, Name, Price, Volatility, InitialPrice)
+                    VALUES (:ticker, :name, :price, :volatility, :initial_price)
+                """), {
+                    "ticker": "TMF",
+                    "name": "Total Market Fund",
+                    "price": tmf_price,
+                    "volatility": tmf_vol,
+                    "initial_price": tmf_price
+                })
+                connection.commit()
+                st.success("Stocks table initialized.")  # Add success message
+            else:
+                st.info("Stocks table already contains data.")
+    except SQLAlchemyError as e:
         st.error(f"Error initializing stocks table: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
 
 
 initialize_stocks()
@@ -204,27 +166,19 @@ with col_admin:
         if st.button("⏯ Pause / Resume Market"):
             # Toggle the market running state
             st.session_state.market_running = not st.session_state.market_running
-            
-            # Save to database
-            conn = get_connection()
-            if conn:
-                cursor = get_cursor(conn)
-                if cursor:
-                    try:
-                        cursor.execute("""
-                            INSERT INTO market_status (`key`, `value`)
-                            VALUES (%s, %s)
-                            ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)
-                        """, ("running", str(st.session_state.market_running)))
 
-                        conn.commit()
-                        st.success(f"Market {'resumed' if st.session_state.market_running else 'paused'}")
-                    except Exception as e:
-                        st.error(f"Error updating market status: {e}")
-                        conn.rollback()
-                    finally:
-                        cursor.close()
-                conn.close()
+            # Save to database
+            try:
+                with engine.connect() as connection:
+                    connection.execute(text("""
+                        INSERT INTO market_status (`key`, `value`)
+                        VALUES (:key, :value)
+                        ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)
+                    """), {"key": "running", "value": str(st.session_state.market_running)})
+                    connection.commit()
+                    st.success(f"Market {'resumed' if st.session_state.market_running else 'paused'}")
+            except SQLAlchemyError as e:
+                st.error(f"Error updating market status: {e}")
             st.rerun()  # Force a rerun to update the display immediately
     else:
         st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
@@ -237,95 +191,82 @@ SIM_START_DATE = pd.Timestamp("2200-01-01")
 # --- Final update_prices function ---
 def update_prices(ticks=1):
     """Optimized: Updates stock prices using batch inserts/updates."""
-    conn = get_connection()
-    if conn is None:
-        return
-
-    cursor = get_cursor(conn)
-    if cursor is None:
-        conn.close()
-        return
-
     try:
-        SIM_START_DATE = pd.Timestamp("2200-01-01")
-        for _ in range(ticks):
-            df = pd.read_sql("SELECT * FROM stocks", conn)
-            tick_scale = 24 / TICKS_PER_DAY
-
+        with engine.connect() as connection:
+            SIM_START_DATE = pd.Timestamp("2200-01-01")
             price_history_batch = []
             update_price_batch = []
             update_initial_price_batch = []
 
-            for idx, row in df.iterrows():
-                if row["Ticker"] == "TMF":
-                    continue
+            for _ in range(ticks):
+                df = pd.read_sql(text("SELECT * FROM stocks"), connection)
+                tick_scale = 24 / TICKS_PER_DAY
 
-                regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
-                scaled_vol = row["Volatility"] * np.sqrt(tick_scale / 24)
-                momentum = np.random.choice([1, -1])
-                noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
+                for idx, row in df.iterrows():
+                    if row["Ticker"] == "TMF":
+                        continue
 
-                financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
-                sentiment_multiplier = {
-                    "Bubbling": 0.03,
-                    "Booming": 0.01,
-                    "Stagnant": 0.00,
-                    "Receding": -0.02,
-                    "Depression": -0.05
-                }
-                selected_sentiment = st.session_state.get("market_sentiment", "Booming")
-                mult = sentiment_multiplier.get(selected_sentiment, 1.0)
-                drift_rate = (financial_drift * mult * row["DriftMultiplier"]) / 24
-                drift = np.clip(drift_rate * tick_scale * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
+                    regime_multiplier = np.random.choice([1, 1.5], p=[0.95, 0.05])
+                    scaled_vol = row["Volatility"] * np.sqrt(tick_scale / 24)
+                    momentum = np.random.choice([1, -1])
+                    noise = np.random.normal(0, scaled_vol * regime_multiplier) * momentum
 
-                mean_reversion = 0.01 * (row["InitialPrice"] - row["Price"])
+                    financial_drift = st.session_state.risk_free_rate + st.session_state.equity_risk_premium
+                    sentiment_multiplier = {
+                        "Bubbling": 0.03,
+                        "Booming": 0.01,
+                        "Stagnant": 0.00,
+                        "Receding": -0.02,
+                        "Depression": -0.05
+                    }
+                    selected_sentiment = st.session_state.get("market_sentiment", "Booming")
+                    mult = sentiment_multiplier.get(selected_sentiment, 1.0)
+                    drift_rate = (financial_drift * mult * row["DriftMultiplier"]) / 24
+                    drift = np.clip(drift_rate * tick_scale * row["Price"], -0.002 * row["Price"], 0.002 * row["Price"])
 
-                daily_shock_chance = 0.001
-                shock_chance = 1 - (1 - daily_shock_chance) ** (tick_scale / 24)
-                shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5]) if np.random.rand() < shock_chance else 1.0
+                    mean_reversion = 0.01 * (row["InitialPrice"] - row["Price"])
 
-                base_price = row["Price"] * shock_factor
-                new_price = base_price + noise * base_price + drift + mean_reversion
-                new_price = float(np.clip(new_price, row["Price"] * 0.99, row["Price"] * 1.01))
-                new_price = max(new_price, 0.01)
+                    daily_shock_chance = 0.001
+                    shock_chance = 1 - (1 - daily_shock_chance) ** (tick_scale / 24)
+                    shock_factor = np.random.choice([0.95, 1.05], p=[0.5, 0.5]) if np.random.rand() < shock_chance else 1.0
 
-                if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
-                    new_initial_price = row["InitialPrice"] * 1.00005
-                    update_initial_price_batch.append((new_initial_price, row["Ticker"]))
+                    base_price = row["Price"] * shock_factor
+                    new_price = base_price + noise * base_price + drift + mean_reversion
+                    new_price = float(np.clip(new_price, row["Price"] * 0.99, row["Price"] * 1.01))
+                    new_price = max(new_price, 0.01)
 
-                df.at[idx, "Price"] = new_price
-                sim_timestamp = SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
-                price_history_batch.append((sim_timestamp, row["Ticker"], new_price))
+                    if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
+                        new_initial_price = row["InitialPrice"] * 1.00005
+                        update_initial_price_batch.append((new_initial_price, row["Ticker"]))
 
-            tmf_data = df[df["Ticker"] != "TMF"]
-            tmf_price = float(np.average(tmf_data["Price"], weights=tmf_data["Volatility"]))
-            df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
+                    df.at[idx, "Price"] = new_price
+                    sim_timestamp = SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
+                    price_history_batch.append((sim_timestamp, row["Ticker"], new_price))
 
-            for _, row in df.iterrows():
-                update_price_batch.append((row["Price"], row["Ticker"]))
+                tmf_data = df[df["Ticker"] != "TMF"]
+                tmf_price = float(np.average(tmf_data["Price"], weights=tmf_data["Volatility"]))
+                df.loc[df["Ticker"] == "TMF", "Price"] = tmf_price
 
-            cursor.executemany(
-                "INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
-                price_history_batch
+                for _, row in df.iterrows():
+                    update_price_batch.append((row["Price"], row["Ticker"]))
+
+            connection.execute(
+                text("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (:timestamp, :ticker, :price)"),
+                [{"timestamp": ts, "ticker": tick, "price": p} for ts, tick, p in price_history_batch]
             )
-            cursor.executemany(
-                "UPDATE stocks SET Price = %s WHERE Ticker = %s",
-                update_price_batch
+            connection.execute(
+                text("UPDATE stocks SET Price = :price WHERE Ticker = :ticker"),
+                [{"price": price, "ticker": ticker} for price, ticker in update_price_batch]
             )
             if update_initial_price_batch:
-                cursor.executemany(
-                    "UPDATE stocks SET InitialPrice = %s WHERE Ticker = %s",
-                    update_initial_price_batch
+                connection.execute(
+                    text("UPDATE stocks SET InitialPrice = :initial_price WHERE Ticker = :ticker"),
+                    [{"initial_price": ip, "ticker": tick} for ip, tick in update_initial_price_batch]
                 )
-            conn.commit()
+            connection.commit()
             st.session_state.sim_time += 1
-    except Exception as e:
+    except SQLAlchemyError as e:
         st.error(f"Error updating prices: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
-
 
 
 # --- Auto-refresh and Price Updates ---
@@ -361,12 +302,8 @@ else:
 st.markdown("### 📈 Current Stock Prices")
 def display_stock_data():
     """Displays the current stock prices in a DataFrame."""
-    conn = get_connection()
-    if conn is None:
-        return
-
     try:
-        stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
+        stocks_df = pd.read_sql(text("SELECT * FROM stocks"), engine)
         if stocks_df.empty:
             st.info("No stock data available. Initialize stocks to begin simulation.")
             return
@@ -389,10 +326,8 @@ def display_stock_data():
             use_container_width=True,
             height=400
         )
-    except Exception as e:
+    except SQLAlchemyError as e:
         st.error(f"Error displaying stock data: {e}")
-    finally:
-        conn.close()
 
 display_stock_data()
 
@@ -404,15 +339,11 @@ selected_ticker = st.selectbox("Choose a stock", base_tickers + ["TMF"])
 
 def display_stock_history(ticker):
     """Displays the price history of a selected stock."""
-    conn = get_connection()
-    if conn is None:
-        return
-
     try:
         hist = pd.read_sql(
-            "SELECT * FROM price_history WHERE Ticker = %s ORDER BY Timestamp",
-            conn,
-            params=(ticker,)
+            text("SELECT * FROM price_history WHERE Ticker = :ticker ORDER BY Timestamp"),
+            engine,
+            params={"ticker": ticker}
         )
 
         if not hist.empty:
@@ -481,10 +412,8 @@ def display_stock_history(ticker):
                 st.info("No price history available for the selected timeframe.")
         else:
             st.info("No price history available yet for this stock.")
-    except Exception as e:
+    except SQLAlchemyError as e:
         st.error(f"Error displaying stock history: {e}")
-    finally:
-        conn.close()
 
 
 if selected_ticker:
@@ -498,17 +427,7 @@ if is_admin:
     with st.sidebar.expander("Database Upload"):
         uploaded_file = st.file_uploader("Upload Database File", type=["db"])
         if uploaded_file is not None:
-            try:
-                with open(DATABASE_PATH, "wb") as f:
-                    f.write(uploaded_file.read())
-                st.success("Database file uploaded successfully! Please refresh the page to load the data.")
-
-                # Clear session state to force reload
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun() # Use st.rerun()
-            except Exception as e:
-                st.error(f"Error handling uploaded database: {e}")
+            st.error("Database upload functionality needs to be implemented with SQLAlchemy.")
 
     st.sidebar.divider()
     with st.sidebar.expander("🎯 Manual Stock Controls"):
@@ -519,24 +438,22 @@ if is_admin:
         with col_manual2:
             price_change = st.number_input("New Price", min_value=0.01)
         if st.button("✅ Apply Price Change"):
-            conn = get_connection()
-            if conn:
-                cursor = get_cursor(conn)
-                if cursor:
-                    try:
-                        cursor.execute("UPDATE stocks SET Price = %s WHERE Ticker = %s", (price_change, ticker_to_change))
-                        sim_timestamp_now = (SIM_START_DATE + timedelta(
-                            hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))).to_pydatetime()
-                        cursor.execute("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (%s, %s, %s)",
-                                       (sim_timestamp_now.isoformat(), ticker_to_change, price_change))
-                        conn.commit()
-                        st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
-                    except Exception as e:
-                        st.error(f"Error applying price change: {e}")
-                        conn.rollback()
-                    finally:
-                        cursor.close()
-                conn.close()
+            try:
+                with engine.connect() as connection:
+                    sim_timestamp_now = (SIM_START_DATE + timedelta(
+                        hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))).to_pydatetime()
+                    connection.execute(
+                        text("UPDATE stocks SET Price = :price WHERE Ticker = :ticker"),
+                        {"price": price_change, "ticker": ticker_to_change}
+                    )
+                    connection.execute(
+                        text("INSERT INTO price_history (Timestamp, Ticker, Price) VALUES (:timestamp, :ticker, :price)"),
+                        {"timestamp": sim_timestamp_now, "ticker": ticker_to_change, "price": price_change}
+                    )
+                    connection.commit()
+                    st.success(f"Updated {ticker_to_change} to {price_change:.2f} credits.")
+            except SQLAlchemyError as e:
+                st.error(f"Error applying price change: {e}")
 
     st.sidebar.divider()
     with st.sidebar.expander("⏩ Advance Simulation Time"):
@@ -545,7 +462,7 @@ if is_admin:
         with col_advance1:
             if st.button("Advance 1 Hour"):
                 update_prices(ticks=1)
-                st.success("Advanced 1 day")
+                st.success("Advanced 1 hour")
                 st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
             if st.button("Advance 1 Day"):
                 update_prices(ticks=TICKS_PER_DAY)
@@ -554,67 +471,64 @@ if is_admin:
         with col_advance2:
             if st.button("Advance 1 Week"):
                 update_prices(ticks=7 * TICKS_PER_DAY)
-                st.success("Advanced 1 day")
+                st.success("Advanced 1 week")
                 st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
             if st.button("Advance 1 Month"):
                 update_prices(ticks=30 * TICKS_PER_DAY)
-                st.success("Advanced 1 day")
+                st.success("Advanced 1 month")
                 st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
         if st.button("Advance 1 Year"):
             update_prices(ticks=365 * TICKS_PER_DAY)
-            st.success("Advanced 1 day")
+            st.success("Advanced 1 year")
             st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
 
     st.sidebar.divider()
     with st.sidebar.expander("📉 Adjust Stock Volatility"):
         st.markdown("##### Change Volatility")
-        conn = get_connection()
-        if conn:
-            cursor = get_cursor(conn)
-            if cursor:
-                try:
-                    tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
-                    selected_vol_ticker = st.selectbox("Select Stock", tickers)
-                    current_vol = pd.read_sql("SELECT Volatility FROM stocks WHERE Ticker = %s", conn,
-                                            params=(selected_vol_ticker,)).iloc[0, 0]
-                    new_vol = st.number_input("New Volatility", value=current_vol, step=0.001, format="%.3f",
-                                            key=f"vol_{selected_vol_ticker}")
-                    if st.button("📈 Apply Volatility Change"):
-                        cursor.execute("UPDATE stocks SET Volatility = %s WHERE Ticker = %s", (new_vol, selected_vol_ticker))
-                        conn.commit()
-                        st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
-                except Exception as e:
-                    st.error(f"Error adjusting volatility: {e}")
-                    conn.rollback()
-                finally:
-                    cursor.close()
-            conn.close()
+        try:
+            with engine.connect() as connection:
+                tickers = pd.read_sql(text("SELECT Ticker FROM stocks"), connection)["Ticker"].tolist()
+                selected_vol_ticker = st.selectbox("Select Stock", tickers)
+                current_vol = pd.read_sql(
+                    text("SELECT Volatility FROM stocks WHERE Ticker = :ticker"),
+                    connection,
+                    params={"ticker": selected_vol_ticker}
+                ).iloc[0, 0]
+                new_vol = st.number_input("New Volatility", value=current_vol, step=0.001, format="%.3f",
+                                        key=f"vol_{selected_vol_ticker}")
+                if st.button("📈 Apply Volatility Change"):
+                    connection.execute(
+                        text("UPDATE stocks SET Volatility = :volatility WHERE Ticker = :ticker"),
+                        {"volatility": new_vol, "ticker": selected_vol_ticker}
+                    )
+                    connection.commit()
+                    st.success(f"Updated volatility of {selected_vol_ticker} to {new_vol:.3f}")
+        except SQLAlchemyError as e:
+            st.error(f"Error adjusting volatility: {e}")
 
     st.sidebar.divider()
     with st.sidebar.expander("⚖️ Adjust Stock Drift"):  # New section for drift adjustment
         st.markdown("##### Change Drift Influence")
-        conn = get_connection()
-        if conn:
-            cursor = get_cursor(conn)
-            if cursor:
-                try:
-                    drift_tickers = pd.read_sql("SELECT Ticker FROM stocks", conn)["Ticker"].tolist()
-                    selected_drift_ticker = st.selectbox("Select Stock to Adjust Drift", drift_tickers)
-                    current_drift = pd.read_sql("SELECT DriftMultiplier FROM stocks WHERE Ticker = %s", conn,
-                                                params=(selected_drift_ticker,)).iloc[0, 0]
-                    new_drift = st.number_input("Drift Multiplier (Dependant on Market Sentiment)", value=current_drift,
-                                                step=0.01, format="%.2f", key=f"drift_{selected_drift_ticker}")
-                    if st.button("✅ Apply Drift Change"):
-                        cursor.execute("UPDATE stocks SET DriftMultiplier = %s WHERE Ticker = %s",
-                                        (new_drift, selected_drift_ticker))
-                        conn.commit()
-                        st.success(f"Updated drift multiplier of {selected_drift_ticker} to {new_drift:.2f}")
-                except Exception as e:
-                    st.error(f"Error adjusting drift: {e}")
-                    conn.rollback()
-                finally:
-                    cursor.close()
-            conn.close()
+        try:
+            with engine.connect() as connection:
+                drift_tickers = pd.read_sql(text("SELECT Ticker FROM stocks"), connection)["Ticker"].tolist()
+                selected_drift_ticker = st.selectbox("Select Stock to Adjust Drift", drift_tickers)
+                current_drift = pd.read_sql(
+                    text("SELECT DriftMultiplier FROM stocks WHERE Ticker = :ticker"),
+                    connection,
+                    params={"ticker": selected_drift_ticker}
+                ).iloc[0, 0]
+                new_drift = st.number_input("Drift Multiplier (Dependant on Market Sentiment)", value=current_drift,
+                                            step=0.01, format="%.2f", key=f"drift_{selected_drift_ticker}")
+                if st.button("✅ Apply Drift Change"):
+                    connection.execute(
+                        text("UPDATE stocks SET DriftMultiplier = :drift WHERE Ticker = :ticker"),
+                        {"drift": new_drift, "ticker": selected_drift_ticker}
+                    )
+                    connection.commit()
+                    st.success(f"Updated drift multiplier of {selected_drift_ticker} to {new_drift:.2f}")
+        except SQLAlchemyError as e:
+            st.error(f"Error adjusting drift: {e}")
 
     st.sidebar.divider()
     with st.sidebar.expander("🏦 Market Parameters"):
