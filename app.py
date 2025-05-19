@@ -363,20 +363,27 @@ def display_stock_data():
 
     try:
         stocks_df = pd.read_sql("SELECT * FROM stocks", conn)
+        if stocks_df.empty:
+            st.info("No stock data available. Initialize stocks to begin simulation.")
+            return
+
         stocks_df["$ Change"] = stocks_df["Price"] - stocks_df["InitialPrice"]
         stocks_df["% Change"] = (stocks_df["$ Change"] / stocks_df["InitialPrice"]) * 100
         stocks_df = stocks_df.sort_values("Ticker").reset_index(drop=True)
 
+        # Use a safe default format
+        style_format = {
+            "Price": "{:.2f}",
+            "Volatility": "{:.3f}",
+            "$ Change": "{:+.2f}",
+            "% Change": "{:+.2f}%"
+        }
+
         st.dataframe(
             stocks_df[["Ticker", "Name", "Price", "Volatility", "$ Change", "% Change"]]
-            .style.format({
-                "Price": "{:.2f}",
-                "Volatility": "{:.3f}",
-                "$ Change": "+{:.2f}" if stocks_df["$ Change"].iloc[0] >= 0 else "{:.2f}",
-                "% Change": "+{:.2f}%" if stocks_df["% Change"].iloc[0] >= 0 else "{:.2f}%"
-            }),
+            .style.format(style_format),
             use_container_width=True,
-            height=400  # Adjusted height
+            height=400
         )
     except Exception as e:
         st.error(f"Error displaying stock data: {e}")
