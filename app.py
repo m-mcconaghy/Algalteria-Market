@@ -197,7 +197,7 @@ def update_prices(ticks=1):
             update_price_batch = []
             update_initial_price_batch = []
 
-            for _ in range(ticks):
+            for i in range(ticks):  # Iterate with an index
                 df = pd.read_sql(text("SELECT * FROM stocks"), connection)
                 tick_scale = 24 / TICKS_PER_DAY
 
@@ -214,7 +214,7 @@ def update_prices(ticks=1):
                     sentiment_multiplier = {
                         "Bubbling": 0.03,
                         "Booming": 0.01,
-                        "Stagnant": 0.00,
+                        "Stagnant": 0.005,
                         "Receding": -0.02,
                         "Depression": -0.05
                     }
@@ -234,12 +234,14 @@ def update_prices(ticks=1):
                     new_price = float(np.clip(new_price, row["Price"] * 0.99, row["Price"] * 1.01))
                     new_price = max(new_price, 0.01)
 
-                    if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
+                     if st.session_state.sim_time % (24 / (24 / TICKS_PER_DAY)) == 0:
                         new_initial_price = row["InitialPrice"] * 1.00005
                         update_initial_price_batch.append((new_initial_price, row["Ticker"]))
 
                     df.at[idx, "Price"] = new_price
-                    sim_timestamp = SIM_START_DATE + timedelta(hours=(st.session_state.sim_time * (24 / TICKS_PER_DAY)))
+                    # Corrected timestamp calculation:
+                    current_sim_ticks = st.session_state.sim_time + i
+                    sim_timestamp = SIM_START_DATE + timedelta(hours=(current_sim_ticks * (24 / TICKS_PER_DAY)))
                     price_history_batch.append((sim_timestamp, row["Ticker"], new_price))
 
                 tmf_data = df[df["Ticker"] != "TMF"]
@@ -263,10 +265,9 @@ def update_prices(ticks=1):
                     [{"initial_price": ip, "ticker": tick} for ip, tick in update_initial_price_batch]
                 )
             connection.commit()
-            st.session_state.sim_time += ticks  # Increment by the number of ticks
+            st.session_state.sim_time += ticks
     except SQLAlchemyError as e:
         st.error(f"Error updating prices: {e}")
-
 
 # --- Auto-refresh and Price Updates ---
 # Only run auto-refresh if market is running
