@@ -9,7 +9,12 @@ from streamlit_autorefresh import st_autorefresh
 import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
+import glob
+st.sidebar.markdown("📁 Files in app directory:")
+st.sidebar.write(glob.glob("*"))
 
+st.sidebar.markdown(f"🗂 Active DB: `{DB_FILENAME}`")
+st.sidebar.markdown(f"📏 Size: {os.path.getsize(DB_FILENAME)} bytes")
 DB_FILENAME = "market.db"
 
 # Always allow admin upload before anything DB-related
@@ -32,12 +37,7 @@ if not os.path.exists(DB_FILENAME):
 
         
 DATABASE_PATH = "market.db"
-import glob
-st.sidebar.markdown("📁 Files in app directory:")
-st.sidebar.write(glob.glob("*"))
 
-st.sidebar.markdown(f"🗂 Active DB: `{DB_FILENAME}`")
-st.sidebar.markdown(f"📏 Size: {os.path.getsize(DB_FILENAME)} bytes")
 
 # --- Database Connection ---
 def get_connection():
