@@ -3,4 +3,3 @@ pandas
 numpy
 altair
 streamlit-autorefresh
-glob
