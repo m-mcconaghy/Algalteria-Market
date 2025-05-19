@@ -264,7 +264,7 @@ def update_prices(ticks=1):
                     [{"initial_price": ip, "ticker": tick} for ip, tick in update_initial_price_batch]
                 )
             connection.commit()
-            st.session_state.sim_time += 1
+            st.session_state.sim_time += ticks  # Increment by the number of ticks
     except SQLAlchemyError as e:
         st.error(f"Error updating prices: {e}")
 
