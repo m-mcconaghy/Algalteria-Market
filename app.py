@@ -423,13 +423,7 @@ if selected_ticker:
 # --- Admin Controls ---
 if is_admin:
     st.sidebar.header("⚙️ Admin Tools")
-
-    with st.sidebar.expander("Database Upload"):
-        uploaded_file = st.file_uploader("Upload Database File", type=["db"])
-        if uploaded_file is not None:
-            st.error("Database upload functionality needs to be implemented with SQLAlchemy.")
-
-    st.sidebar.divider()
+    
     with st.sidebar.expander("🎯 Manual Stock Controls"):
         st.markdown("##### Modify Stock Price")
         col_manual1, col_manual2 = st.columns(2)
@@ -555,3 +549,29 @@ if is_admin:
                                             index=list(market_sentiment_options.keys()).index(
                                                 st.session_state.market_sentiment))
         st.session_state.market_sentiment = selected_sentiment_key
+    st.sidebar.divider()
+    with st.sidebar.expander("💥 **Database Reset**"):
+        st.markdown("##### **Danger: Erase All Data and Recreate Tables**")
+        admin_password_reset = st.sidebar.text_input("Enter admin password to confirm reset", type="password", key="reset_password")
+        is_admin_reset = admin_password_reset == st.secrets.get("ADMIN_PASSWORD", "secret123")
+        if is_admin_reset:
+            if st.sidebar.button("🔥 **CONFIRM DELETE ALL DATA AND RECREATE TABLES** 🔥", key="reset_button"):
+                try:
+                    with engine.connect() as connection:
+                        connection.execute(text("DROP TABLE IF EXISTS price_history"))
+                        connection.execute(text("DROP TABLE IF EXISTS stocks"))
+                        connection.execute(text("DROP TABLE IF EXISTS market_status"))
+                        connection.commit()
+                        st.success("All tables dropped successfully.")
+                        # Re-initialize the database structure and initial data
+                        initialize_database()
+                        initialize_stocks()
+                        st.info("Database tables recreated and initial stocks added.")
+                except SQLAlchemyError as e:
+                    st.error(f"Error dropping tables: {e}")
+                st.rerun() # Force a refresh to reflect the changes
+        elif admin_password_reset:
+            st.sidebar.warning("Incorrect admin password.")
+
+else:
+    st.info("\U0001F6F8 Viewer Mode — Live Market Feed Only")
