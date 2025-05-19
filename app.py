@@ -32,6 +32,9 @@ if not os.path.exists(DB_FILENAME):
 
         
 DATABASE_PATH = "market.db"
+import glob
+st.sidebar.markdown("📁 Files in app directory:")
+st.sidebar.write(glob.glob("*"))
 
 st.sidebar.markdown(f"🗂 Active DB: `{DB_FILENAME}`")
 st.sidebar.markdown(f"📏 Size: {os.path.getsize(DB_FILENAME)} bytes")
