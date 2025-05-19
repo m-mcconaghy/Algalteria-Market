@@ -10,16 +10,18 @@ import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-# Must go before any other Streamlit logic
-st.sidebar.header("⚙️ Admin Tools")
-with st.sidebar.expander("📂 Upload New Database (Before Init)"):
-    uploaded_file = st.file_uploader("Upload SQLite DB", type=["db"], key="early_db_upload")
-    if uploaded_file is not None:
-        with open("market.db", "wb") as f:
-            f.write(uploaded_file.read())
-        st.success("✅ Database uploaded and applied.")
-        st.experimental_rerun()  # Ensure app uses new DB immediately
+DB_FILENAME = "market.db"
 
+# Step 1: Ensure the app halts if no DB exists
+if not os.path.exists(DB_FILENAME):
+    st.warning("⚠️ No database found. Please upload a `.db` file to begin.")
+    uploaded_file = st.file_uploader("Upload SQLite DB", type=["db"])
+    if uploaded_file is not None:
+        with open(DB_FILENAME, "wb") as f:
+            f.write(uploaded_file.read())
+        st.success("✅ Uploaded successfully. Reloading...")
+        st.experimental_rerun()  # ✅ Immediately rerun using the new DB
+    st.stop()  # ✅ Only used to prevent app execution if no DB exists
         
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 DATABASE_PATH = "market.db"
