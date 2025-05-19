@@ -9,15 +9,9 @@ from streamlit_autorefresh import st_autorefresh
 import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
-import glob
-st.sidebar.markdown("📁 Files in app directory:")
-st.sidebar.write(glob.glob("*"))
 
-st.sidebar.markdown(f"🗂 Active DB: `{DB_FILENAME}`")
-st.sidebar.markdown(f"📏 Size: {os.path.getsize(DB_FILENAME)} bytes")
-DB_FILENAME = "market.db"
-
-# Always allow admin upload before anything DB-related
+DB_FILENAME = "/mount/src/market.db"  # ✅ Writable path on Streamlit Cloud
+# --- Upload Interface ---
 st.sidebar.header("⚙️ Admin Tools")
 with st.sidebar.expander("📂 Upload SQLite DB"):
     uploaded_file = st.file_uploader("Upload a `.db` file", type=["db"], key="db_upload")
@@ -25,25 +19,24 @@ with st.sidebar.expander("📂 Upload SQLite DB"):
         try:
             with open(DB_FILENAME, "wb") as f:
                 f.write(uploaded_file.read())
-            st.success("✅ Database uploaded. Reloading...")
+            st.success("✅ Database uploaded successfully. Reloading...")
             st.experimental_rerun()
         except Exception as e:
-            st.error(f"❌ Upload failed: {e}")
+            st.error(f"❌ Failed to save DB: {e}")
 
-# 🛑 Block everything else if DB isn't present
+# --- Block App if DB Missing ---
 if not os.path.exists(DB_FILENAME):
-    st.error("🚫 No database found. Please upload one.")
+    st.error("🚫 `market.db` not found. Please upload to begin.")
     st.stop()
 
         
 DATABASE_PATH = "market.db"
 
-
 # --- Database Connection ---
 def get_connection():
     """Gets or creates a database connection."""
     try:
-        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        conn = sqlite3.connect("/mount/src/market.db", check_same_thread=False)
         return conn
     except Exception as e:
         st.error(f"Error connecting to the database: {e}")
@@ -59,6 +52,9 @@ def get_cursor(conn):
         st.error(f"Error getting cursor: {e}")
         return None
 
+st.sidebar.text(f"Current DB: {DB_FILENAME}")
+st.sidebar.text(f"Exists: {os.path.exists(DB_FILENAME)}")
+st.sidebar.text(f"Size: {os.path.getsize(DB_FILENAME) if os.path.exists(DB_FILENAME) else 0} bytes")
 
 # --- Initialize Database Tables ---
 def initialize_database():
