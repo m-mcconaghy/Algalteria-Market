@@ -1,5 +1,14 @@
 import streamlit as st
 import os
+import pandas as pd
+import numpy as np
+import sqlite3
+from datetime import datetime, timedelta
+import time
+from streamlit_autorefresh import st_autorefresh
+import altair as alt
+
+st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
 # Make sure this is the first thing in your app (before DB connection, etc.)
 if "database_path" not in st.session_state:
@@ -19,19 +28,8 @@ with st.sidebar.expander("📂 Upload New Database (Before Init)"):
         st.success(f"✅ Uploaded and switched to `{uploaded_name}`")
         st.stop()  # HALT execution here, so nothing runs using the previous DB
         
-import pandas as pd
-import numpy as np
-import sqlite3
-from datetime import datetime, timedelta
-import time
-from streamlit_autorefresh import st_autorefresh
-import altair as alt
-
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 DATABASE_PATH = st.session_state.database_path
-
-st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
-
 
 # --- Database Connection ---
 def get_connection():
