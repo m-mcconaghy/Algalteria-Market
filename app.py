@@ -10,7 +10,8 @@ import altair as alt
 
 st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide")
 
-DB_FILENAME = "/mount/src/market.db"
+DB_FILENAME = os.path.join(os.getcwd(), "market.db")  # ✅ Writable path
+st.sidebar.text(f"Writable path: {DB_FILENAME}")
 
 st.sidebar.header("⚙️ Admin Tools")
 with st.sidebar.expander("📂 Upload SQLite DB"):
@@ -37,7 +38,7 @@ DATABASE_PATH = DB_FILENAME
 def get_connection():
     """Gets or creates a database connection."""
     try:
-        conn = sqlite3.connect("/mount/src/market.db", check_same_thread=False)
+        conn = sqlite3.connect("DATABASE_PATH", check_same_thread=False)
         return conn
     except Exception as e:
         st.error(f"Error connecting to the database: {e}")
