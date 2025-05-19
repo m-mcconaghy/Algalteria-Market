@@ -474,9 +474,14 @@ if is_admin:
                 st.success("Advanced 1 month")
                 st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
         if st.button("Advance 1 Year"):
-            update_prices(ticks=365 * TICKS_PER_DAY)
-            st.success("Advanced 1 year")
-            st.rerun()  # Ensure the UI reloads with new sim_time and updated graph
+            for _ in range(12):  # Loop 12 times for 12 months
+                update_prices(ticks=30 * TICKS_PER_DAY)  # Advance by 30 days (approximately a month)
+                st.session_state.sim_time += 30 * TICKS_PER_DAY #Manually update the sim_time
+                st.write(f"Advanced 1 month. Current sim_time: {st.session_state.sim_time}") #feedback
+        #st.rerun()  # Removed st.rerun() from inside the loop
+            st.success("Advanced 1 year (12 months)")  # Message after the loop completes
+            st.rerun() #Rerun after the loop
+
 
     st.sidebar.divider()
     with st.sidebar.expander("📉 Adjust Stock Volatility"):
