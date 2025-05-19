@@ -12,25 +12,24 @@ st.set_page_config(page_title="Algalteria Galactic Exchange (AGE)", layout="wide
 
 DB_FILENAME = "market.db"
 
-# Always allow admin upload
+# Always allow admin upload before anything DB-related
 st.sidebar.header("⚙️ Admin Tools")
 with st.sidebar.expander("📂 Upload SQLite DB"):
-    uploaded_file = st.file_uploader("Upload a `.db` file to begin", type=["db"], key="db_upload")
-    
+    uploaded_file = st.file_uploader("Upload a `.db` file", type=["db"], key="db_upload")
     if uploaded_file is not None:
         try:
-            # Overwrite the existing DB file
             with open(DB_FILENAME, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             st.success("✅ Database uploaded. Reloading...")
             st.experimental_rerun()
         except Exception as e:
-            st.error(f"❌ Failed to save database: {e}")
+            st.error(f"❌ Upload failed: {e}")
 
-# If DB still missing after upload block, stop the app
+# 🛑 Block everything else if DB isn't present
 if not os.path.exists(DB_FILENAME):
-    st.error("🚫 No database file found. Please upload one above to begin.")
+    st.error("🚫 No database found. Please upload one.")
     st.stop()
+
         
 DATABASE_PATH = "market.db"
 
