@@ -34,6 +34,9 @@ if not os.path.exists(DB_FILENAME):
         
 DATABASE_PATH = "market.db"
 
+st.sidebar.markdown(f"🗂 Active DB: `{DB_FILENAME}`")
+st.sidebar.markdown(f"📏 Size: {os.path.getsize(DB_FILENAME)} bytes")
+
 # --- Database Connection ---
 def get_connection():
     """Gets or creates a database connection."""
