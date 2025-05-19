@@ -10,6 +10,13 @@ import altair as alt
 import os
 import mysql.connector
 from mysql.connector import Error
+from sqlalchemy import create_engine
+
+@st.cache_resource
+def get_sqlalchemy_engine():
+    return create_engine(
+        f"mysql+pymysql://{st.secrets['DB_USER']}:{st.secrets['DB_PASSWORD']}@{st.secrets['DB_HOST']}/{st.secrets['DB_NAME']}"
+    )
 
 TICKS_PER_DAY = 3  # Used for faster simulation during Advance mode
 
